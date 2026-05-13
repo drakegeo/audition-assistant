@@ -1,0 +1,15 @@
+# Backend
+backend/.env
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/.mypy_cache/
+backend/.pytest_cache/
+backend/.ruff_cache/
+
+# Frontend
+tool-frontend/.env.local
+tool-frontend/node_modules/
+tool-frontend/.next/
+tool-frontend/out/
