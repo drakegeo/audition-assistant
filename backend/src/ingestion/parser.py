@@ -1,28 +1,31 @@
 from typing import Any
 
+import jsonschema
+
 from ..llm.client import LLMClient
 
-# Loaded from specs/script-parsing.md — kept here as a module constant so it
-# can be found in one place without touching the spec doc at runtime.
-_PROMPT_TEMPLATE = """\
+# Sentinel used in the prompt template. Must not appear in any real script text.
+_SCRIPT_SENTINEL = "<<<SCRIPT_TEXT>>>"
+
+_PROMPT_TEMPLATE = f"""\
 You are parsing a play or screenplay into structured data for an at-home rehearsal tool.
 
 Read the script below carefully. Output ONLY valid JSON matching this schema:
 
-{
+{{
   "title": "string — your best guess at the script title, or 'Untitled' if none found",
   "characters": [
-    {"name": "CANONICAL_NAME"}
+    {{"name": "CANONICAL_NAME"}}
   ],
   "lines": [
-    {
+    {{
       "sequence": 1,
-      "kind": "scene_header" | "stage_direction" | "dialogue",
-      "character": "CANONICAL_NAME" | null,
+      "kind": "scene_header | stage_direction | dialogue",
+      "character": "CANONICAL_NAME or null",
       "text": "the line content"
-    }
+    }}
   ]
-}
+}}
 
 Rules:
 
@@ -55,7 +58,7 @@ Rules:
 8. Output ONLY the JSON. No commentary, no markdown fences.
 
 SCRIPT BEGINS:
-{extracted_text}
+{_SCRIPT_SENTINEL}
 SCRIPT ENDS.
 """
 
@@ -97,18 +100,36 @@ async def parse_script(extracted_text: str, llm: LLMClient) -> dict[str, Any]:
 
     Raises ValueError on schema or post-validation failures.
     """
-    # TODO(phase-1): implement
-    # prompt = _PROMPT_TEMPLATE.format(extracted_text=extracted_text)
-    # data = await llm.complete_json(prompt, schema=_SCHEMA)
-    # _validate(data)
-    # return data
-    raise NotImplementedError("Phase 1")
+    prompt = _PROMPT_TEMPLATE.replace(_SCRIPT_SENTINEL, extracted_text)
+    data = await llm.complete_json(prompt, schema=_SCHEMA)
+    try:
+        jsonschema.validate(data, _SCHEMA)
+    except jsonschema.ValidationError as exc:
+        raise ValueError(f"Parsed output didn't match expected shape: {exc.message}") from exc
+    _validate(data)
+    return data
 
 
 def _validate(data: dict[str, Any]) -> None:
-    """Post-LLM validation beyond what JSON schema checks."""
-    # TODO(phase-1): implement
-    # - every dialogue line has a non-null character matching a known character name
-    # - sequences are unique and dense (1, 2, ..., N with no gaps)
-    # - at least one dialogue line exists
-    raise NotImplementedError("Phase 1")
+    """Post-LLM checks that JSON schema cannot express."""
+    known_names = {c["name"] for c in data["characters"]}
+
+    for line in data["lines"]:
+        if line["kind"] == "dialogue":
+            char = line.get("character")
+            if not char:
+                raise ValueError(
+                    f"Dialogue line {line['sequence']} has no character assigned."
+                )
+            if char not in known_names:
+                raise ValueError(
+                    f"Unknown character {char!r} on line {line['sequence']}."
+                )
+
+    sequences = sorted(line["sequence"] for line in data["lines"])
+    expected = list(range(1, len(sequences) + 1))
+    if sequences != expected:
+        raise ValueError("Line sequences are not consecutive starting from 1.")
+
+    if not any(line["kind"] == "dialogue" for line in data["lines"]):
+        raise ValueError("No dialogue lines found — this doesn't look like a valid script.")

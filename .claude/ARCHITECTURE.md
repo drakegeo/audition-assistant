@@ -41,13 +41,13 @@ The rehearsal loop — TTS playback, microphone capture, STT, cue detection, lin
 
 ### The LLM is called exactly once per script
 
-When a script is uploaded, a background task extracts the text, calls Claude Haiku 4.5 with a structured-output prompt, validates the JSON, and writes it to Postgres. After that, the script is just rows in a database — the LLM is never called again for that script.
+When a script is uploaded, a background task extracts the text, calls the configured LLM with a structured-output prompt, validates the JSON, and writes it to Postgres. After that, the script is just rows in a database — the LLM is never called again for that script.
 
 **Why:** Bounds cost, makes the user-facing app deterministic and fast, and means we can swap the LLM provider later without affecting the runtime experience.
 
 ### Backend is provider-agnostic for the LLM
 
-A thin `LLMClient` interface (see `specs/script-parsing.md`) lets us swap between Claude, OpenAI, Groq, etc. with a config change. The default is Claude Haiku 4.5 because it's cheap, fast, and excellent at structured extraction.
+A thin `LLMClient` interface (see `specs/script-parsing.md`) lets us swap providers with a config change. `LLM_PROVIDER=groq` uses Groq's free tier (default); `LLM_PROVIDER=anthropic` uses Claude Haiku. The factory lives in `src/llm/factory.py`.
 
 ### Auth and storage are Supabase, code is FastAPI
 
@@ -137,7 +137,10 @@ audition-assistant/
 ```
 SUPABASE_URL                  ← from Supabase project settings
 SUPABASE_SERVICE_ROLE_KEY     ← server-side only, never expose
-ANTHROPIC_API_KEY             ← server-side LLM access
+LLM_PROVIDER                  ← 'groq' (default) or 'anthropic'
+LLM_MODEL                     ← model name; defaults per provider in factory.py
+GROQ_API_KEY                  ← server-side, required when LLM_PROVIDER=groq
+ANTHROPIC_API_KEY             ← server-side, required when LLM_PROVIDER=anthropic
 ALLOWED_ORIGINS               ← comma-separated, e.g. https://audition-assistant.vercel.app
 LOG_LEVEL                     ← INFO by default
 ```

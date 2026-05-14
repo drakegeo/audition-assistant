@@ -1,3 +1,7 @@
+from dotenv import load_dotenv
+
+load_dotenv()  # loads backend/.env locally; no-op on Render where vars are set by the platform
+
 import logging
 import os
 

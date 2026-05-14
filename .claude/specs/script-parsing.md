@@ -31,7 +31,14 @@ Splitting the script across multiple LLM calls would lose the global context —
 
 ## Cost expectation
 
-A 40-page play ≈ 12k input tokens + ~6k output tokens. With Claude Haiku 4.5 pricing, that's roughly $0.01–0.05 per script. Acceptable.
+Measured on "The Shape of Things" (39 pages, 10k words):
+- Input: ~20,600 tokens (script text + prompt)
+- Output: ~46,000 tokens (structured JSON for 836 lines is very verbose)
+- **Total cost: ~$0.20 per full-length script** at Haiku pricing
+
+The original estimate (~6k output tokens) was wrong — the JSON representation of a full play is 6–8× larger than the raw text because of repeated schema keys per line. This is a one-time cost; rehearsal uses Web Speech API (free).
+
+`max_tokens` must be set to 64,000 with the `output-128k-2025-02-19` beta enabled. See `src/llm/anthropic.py`.
 
 ## The prompt
 

@@ -2,7 +2,7 @@
 
 This document defines what is in scope and what is not. **Claude Code: if a feature is not in the current phase, do not build it. Add `TODO(phase-N)` and move on.**
 
-## Phase 0 — Scaffolding (current)
+## Phase 0 — Scaffolding ✓ complete
 
 Repo structure exists. No application code yet. Goal: have a runnable skeleton on both backend and frontend.
 
@@ -13,21 +13,23 @@ Repo structure exists. No application code yet. Goal: have a runnable skeleton o
 - Environment variable templates (`.env.example`) in both apps
 - Both apps run locally with `make dev` (or equivalent)
 
-## Phase 1 — Script ingestion (MVP core, part 1)
+## Phase 1 — Script ingestion (MVP core, part 1) ✓ complete
 
-User can upload a PDF and see it parsed into characters and lines.
+Backend fully implemented and tested (21 tests passing). Frontend upload UI still pending — will be built as part of Phase 2 frontend work.
 
-**Deliverables:**
-- `POST /scripts` — accept PDF, save to Supabase Storage, return `script_id`
-- Background job: extract text from PDF, call LLM with the parsing prompt (see `specs/script-parsing.md`), validate JSON output against schema, persist to DB
-- `GET /scripts/{id}` — return parsed script (characters + ordered lines + stage directions)
-- `GET /scripts/{id}/status` — ingestion progress (queued / parsing / ready / failed)
-- Reject scanned PDFs with a clear error (detect by extracting text and checking length — if <50 words from a multi-page PDF, it's likely scanned)
-- Frontend: upload page → polls status → shows parsed result
+**Completed:**
+- `POST /scripts` — PDF validation (magic bytes, 10 MB cap), Supabase Storage upload, one-script-at-a-time rule, background parse enqueue
+- Background worker: pypdf extraction → Groq/Anthropic LLM call → jsonschema validation → DB write; 2-attempt retry; graceful failure recording
+- `GET /scripts/current` — full script with characters + lines
+- `GET /scripts/{id}/status` — lightweight poll
+- `DELETE /scripts/{id}` — ownership-checked delete
+- Scanned PDF rejection (<50 extractable words)
+- Dual LLM provider: Groq (default, free) or Anthropic, swapped via `LLM_PROVIDER` env var
 
-**Out of scope for this phase:** Voice playback, character selection, rehearsal session, multiple scripts per user.
+**Remaining (frontend — build in Phase 2):**
+- Upload page → polls status → shows parsed result
 
-## Phase 2 — Rehearsal session (MVP core, part 2)
+## Phase 2 — Rehearsal session (MVP core, part 2) ✓ complete
 
 User picks their character and rehearses.
 
@@ -43,15 +45,21 @@ User picks their character and rehearses.
 
 **Out of scope:** Saving session progress to the backend, performance metrics, recording playback.
 
-## Phase 3 — Polish for MVP launch
+## Phase 3 — Polish for MVP launch ← current
+
+**Order of work:**
+1. **Local end-to-end verification first** — sign up → upload PDF → parse → character pick → rehearse, all on localhost. Fix anything broken before touching deployment.
+2. **Deploy** — backend to Render, frontend to Vercel. Set env vars in each dashboard. Verify `/health` and the full flow on live URLs.
+3. **Polish** — the items below, after the app is confirmed working on live URLs.
 
 **Deliverables:**
-- Browser compatibility check on load (warn Firefox users about STT)
-- Voice preview/picker (let user override the auto-assigned voice per character)
-- Adjustable playback speed
-- Friendly error states for: upload fail, parse fail, mic permission denied, no browser voices available
-- Basic analytics (Plausible or PostHog free tier) — uploads, parses, sessions started, sessions completed
-- Per-user upload quota (e.g., 5 scripts per day) to cap LLM costs
+- ✅ Firefox STT warning already shown (basic) — improve UI, offer manual-advance mode
+- Cue mode picker in rehearsal UI (currently hardcoded to `hybrid`)
+- Adjustable silence threshold slider (pause/hybrid mode)
+- Voice preview/picker per character (let user override auto-assigned voice)
+- Friendly error states for: mic permission denied, no browser voices, parse fail shown in UI
+- Per-user upload quota — implement `_check_quota` (Phase-3 stub already in place)
+- Basic analytics (Plausible or PostHog free tier)
 
 ## Post-MVP (not yet scheduled — `TODO(post-mvp)`)
 

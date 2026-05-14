@@ -29,7 +29,11 @@ def get_current_user_id(authorization: str = Header(None)) -> str:
     try:
         result = _admin().auth.get_user(token)
         return str(result.user.id)
-    except Exception:
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning(
+            "auth_failed token_len=%d error=%s", len(token), exc
+        )
         raise HTTPException(
             status_code=401,
             detail={"error": "unauthorized", "detail": "Token invalid or expired"},

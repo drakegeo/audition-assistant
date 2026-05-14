@@ -21,7 +21,7 @@ The product reference is [ScenePartner](https://scenepartner.ai). We are not cop
 
 ## Current status
 
-**Phase: 0 — Scaffolding.** Backend skeleton in place (`/health` live, auth stub, LLM interface). Frontend skeleton created. Next phase: script ingestion (Phase 1).
+**Phase: 3 — Polish.** Core MVP complete. Next step: verify end-to-end locally (sign up → upload PDF → rehearse), then deploy backend to Render and frontend to Vercel. Polish items follow.
 
 ## Hard rules
 

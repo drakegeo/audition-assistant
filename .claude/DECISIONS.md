@@ -37,19 +37,20 @@ Append-only record of architectural and product choices. **When you make a non-t
 
 ---
 
-## ADR-003 — Server-side LLM with one provider, called once per script
+## ADR-003 — Server-side LLM, provider-swappable via env var, called once per script
 **Date:** 2026-05-13
-**Status:** Accepted
+**Status:** Accepted (updated 2026-05-13: Groq added as default provider)
 
 **Context:** Script parsing needs an LLM. Options: user-supplied API keys (multi-provider) vs. server-side single provider.
 
-**Decision:** Backend holds one Anthropic API key, defaults to Claude Haiku 4.5. LLM is called exactly once per script during ingestion; result is cached in Postgres. Code uses an `LLMClient` interface so the provider can be swapped without rewriting call sites.
+**Decision:** Backend holds the API key for the active provider. Default is **Groq** (`llama-3.3-70b-versatile`, free tier). Anthropic (`claude-haiku-4-5-20251001`) is available as a fallback. Controlled by `LLM_PROVIDER` env var; `src/llm/factory.py` returns the right client. LLM is called exactly once per script during ingestion; result is cached in Postgres.
 
 **Consequences:**
 - ✅ Massively simpler UX (no API-key entry screen).
-- ✅ Cost is bounded and predictable: ~$0.01–0.05 per script with Haiku.
-- ✅ Provider-agnostic interface protects against vendor lock-in.
-- ❌ Anthropic outage = no new uploads parse. (Existing scripts still rehearsable.)
+- ✅ Groq free tier = $0 LLM cost during development and early usage.
+- ✅ Provider-agnostic interface — swap with one env var change, no code changes.
+- ✅ 128k context window on Groq's llama model handles full-length plays.
+- ❌ Groq free tier has rate limits; may need to switch to Anthropic under load.
 - ❌ We carry the LLM cost. Need a per-user upload quota to prevent abuse (Phase 3).
 
 ---

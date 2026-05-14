@@ -2,7 +2,7 @@
 
 An at-home audition rehearsal tool. Upload a script PDF, pick your character, and rehearse with a voice partner.
 
-**Status:** Phase 0 — backend skeleton live. Phase 1 next (script ingestion).
+**Status:** Phase 2 — backend ingestion complete (21 tests passing). Building frontend: auth, upload UI, character picker, voice loop.
 
 ## For humans
 
