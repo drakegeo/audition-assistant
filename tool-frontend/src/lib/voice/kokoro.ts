@@ -63,6 +63,17 @@ export async function speakLineKokoro(
   }
 }
 
+export const VOICE_LABELS: Record<KokoroVoice, string> = {
+  af_heart:   "American Female · warm",
+  am_adam:    "American Male · natural",
+  bf_emma:    "British Female · clear",
+  bm_george:  "British Male · deep",
+  af_bella:   "American Female · bright",
+  am_michael: "American Male · rich",
+  af_sarah:   "American Female · soft",
+  bm_lewis:   "British Male · measured",
+};
+
 // Assigns voices to non-user character names deterministically. Narrator gets index 0.
 export function assignKokoroVoices(characterNames: string[]): Map<string, KokoroVoice> {
   const map = new Map<string, KokoroVoice>();
