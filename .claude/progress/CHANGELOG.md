@@ -12,6 +12,17 @@ Format:
 
 ---
 
+## 2026-05-15 — Kokoro WASM TTS integrated
+
+- **Kokoro TTS:** Replaced Web Speech API TTS with `kokoro-js@1.2.1` (Kokoro-82M-v1.0, q8 quantised). Runs 100% client-side via WebAssembly — no server cost. ~80 MB one-time download, cached by browser.
+- **8 English voices** assigned deterministically to characters: af_heart, am_adam, bf_emma, bm_george, af_bella, am_michael, af_sarah, bm_lewis (American + British, male + female).
+- **Web Speech API kept as fallback:** If Kokoro hasn't loaded yet when a line is spoken, falls back to browser TTS. "Loading voice model…" pulse shown in controls bar.
+- **Files:** `src/lib/voice/kokoro.ts` (new), `next.config.ts` (asyncWebAssembly + outputFileTracingExcludes), `src/components/RehearsalView.tsx`.
+- **Vercel fix:** `outputFileTracingExcludes` added to prevent `onnxruntime-node` (404 MB native addon) from being traced into the serverless function by `@vercel/nft`. Also aliased to `false` in webpack server config as belt-and-suspenders.
+- **Multi-language TTS options noted for later:** Web Speech API (free, 30+ langs, robotic), MeloTTS (WASM, 6 langs, open-source), Cartesia ($0.065/1k chars, multilingual), ElevenLabs ($0.18/1k chars, 30+ langs), XTTS self-hosted (17 langs, voice cloning, needs server). Cartesia is the planned premium-tier path.
+
+---
+
 ## 2026-05-15 — Script library + 3-script free plan quota
 
 - **Script library:** Upload page replaced with "My Scripts" library. Users can have up to 3 scripts simultaneously. Each shown as a card with title, status, inline character picker, and delete button.
