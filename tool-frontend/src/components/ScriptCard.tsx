@@ -130,7 +130,7 @@ export default function ScriptCard({ script, onDeleted, onStatusChange }: Props)
             {characters.map((c) => (
               <li key={c.id}>
                 <button
-                  onClick={() => router.push(`/rehearse/${script.id}?character=${c.id}`)}
+                  onClick={() => router.push(`/rehearse/${script.id}/setup?character=${c.id}`)}
                   className="w-full text-left px-3 py-2 rounded-lg border text-sm hover:bg-blue-50 hover:border-blue-400 transition"
                 >
                   <span className="font-medium">{c.name}</span>

@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { CueMode, Line, Script } from "@/types/script";
 import { speakLine, durationEstimateMs } from "@/lib/voice/tts";
-import { loadKokoro, speakLineKokoro, assignKokoroVoices, isKokoroReady, KOKORO_VOICES, VOICE_LABELS, type KokoroVoice } from "@/lib/voice/kokoro";
+import { loadKokoro, speakLineKokoro, assignKokoroVoices, isKokoroReady, KOKORO_VOICES, type KokoroVoice } from "@/lib/voice/kokoro";
 import { createSTT } from "@/lib/voice/stt";
 import { createCueDetector } from "@/lib/voice/cue";
 import { assignVoices, loadVoices } from "@/lib/voice/support";
@@ -100,74 +100,6 @@ function SceneList({ lines, onJump, onClose }: SceneListProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Voice picker panel
-// ---------------------------------------------------------------------------
-
-interface VoicePickerProps {
-  characters: { id: string; name: string }[];
-  voiceMap: Map<string, KokoroVoice>;
-  kokoroReady: boolean;
-  onVoiceChange: (charName: string, voice: KokoroVoice) => void;
-  onClose: () => void;
-}
-
-function VoicePicker({ characters, voiceMap, kokoroReady, onVoiceChange, onClose }: VoicePickerProps) {
-  const [previewing, setPreviewing] = useState<string | null>(null);
-  const cancelRef = useRef<(() => void) | null>(null);
-
-  useEffect(() => () => { cancelRef.current?.(); }, []);
-
-  function handlePreview(charName: string, voice: KokoroVoice) {
-    cancelRef.current?.();
-    setPreviewing(charName);
-    void speakLineKokoro("Hello, it's wonderful to meet you.", voice, () => {
-      setPreviewing(null);
-      cancelRef.current = null;
-    }).then((cancel) => { cancelRef.current = cancel; });
-  }
-
-  return (
-    <div className="absolute top-14 right-4 z-20 w-80 bg-white border shadow-xl rounded-xl overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50">
-        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Character Voices</span>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
-      </div>
-      {!kokoroReady ? (
-        <p className="text-xs text-gray-400 px-4 py-3 animate-pulse">Loading voice model…</p>
-      ) : (
-        <ul className="max-h-80 overflow-y-auto divide-y">
-          {characters.map((char) => {
-            const current = voiceMap.get(char.name) ?? KOKORO_VOICES[0];
-            return (
-              <li key={char.id} className="px-4 py-2.5 flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-700 w-24 shrink-0 truncate">{char.name}</span>
-                <select
-                  value={current}
-                  onChange={(e) => onVoiceChange(char.name, e.target.value as KokoroVoice)}
-                  className="flex-1 text-xs border rounded px-1.5 py-1 bg-white"
-                >
-                  {KOKORO_VOICES.map((v) => (
-                    <option key={v} value={v}>{VOICE_LABELS[v]}</option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => handlePreview(char.name, current)}
-                  disabled={previewing !== null}
-                  className="text-blue-500 hover:text-blue-700 disabled:text-gray-300 text-xs px-1"
-                  aria-label="Preview voice"
-                >
-                  {previewing === char.name ? "…" : "▶"}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -191,7 +123,6 @@ export default function RehearsalView({ script, userCharacterId, cueMode }: Prop
   const [kokoroVoiceMap, setKokoroVoiceMap] = useState<Map<string, KokoroVoice>>(new Map());
   const [showSkipPrompt, setShowSkipPrompt] = useState(false);
   const [showScenes, setShowScenes] = useState(false);
-  const [showVoicePicker, setShowVoicePicker] = useState(false);
   // confirmedWords: from final STT results — reliably spoken (solid blue)
   // interimWords:  from current partial result — being heard right now (light blue)
   const [confirmedWords, setConfirmedWords] = useState<Set<string>>(new Set());
@@ -209,7 +140,17 @@ export default function RehearsalView({ script, userCharacterId, cueMode }: Prop
     const otherChars = script.characters
       .filter((c) => c.id !== userCharacterId)
       .map((c) => c.name);
-    setKokoroVoiceMap(assignKokoroVoices(otherChars));
+    const saved = localStorage.getItem(`voice-prefs-${script.id}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as Record<string, KokoroVoice>;
+        setKokoroVoiceMap(new Map(Object.entries(parsed)));
+      } catch {
+        setKokoroVoiceMap(assignKokoroVoices(otherChars));
+      }
+    } else {
+      setKokoroVoiceMap(assignKokoroVoices(otherChars));
+    }
     loadVoices().then((voices) => {
       const narrator = voices.find((v) => v.lang.toLowerCase().startsWith("en")) ?? voices[0];
       const assigned = assignVoices(otherChars, voices);
@@ -325,12 +266,6 @@ export default function RehearsalView({ script, userCharacterId, cueMode }: Prop
     lineRefs.current[lineIndex]?.scrollIntoView({ block: "start", behavior: "smooth" });
   }
 
-  function handleVoiceChange(charName: string, voice: KokoroVoice) {
-    setKokoroVoiceMap((prev) => new Map(prev).set(charName, voice));
-  }
-
-  const otherCharacters = script.characters.filter((c) => c.id !== userCharacterId);
-
   return (
     <div className="flex flex-col h-full relative">
       {/* Controls */}
@@ -365,13 +300,7 @@ export default function RehearsalView({ script, userCharacterId, cueMode }: Prop
         )}
         <div className="ml-auto flex items-center gap-3">
           <button
-            onClick={() => { setShowVoicePicker((v) => !v); setShowScenes(false); }}
-            className="text-xs text-gray-500 border rounded-lg px-3 py-1.5 hover:bg-gray-50"
-          >
-            Voices ▾
-          </button>
-          <button
-            onClick={() => { setShowScenes((v) => !v); setShowVoicePicker(false); }}
+            onClick={() => setShowScenes((v) => !v)}
             className="text-xs text-gray-500 border rounded-lg px-3 py-1.5 hover:bg-gray-50"
           >
             Scenes ▾
@@ -390,17 +319,6 @@ export default function RehearsalView({ script, userCharacterId, cueMode }: Prop
       {/* Scene list dropdown */}
       {showScenes && (
         <SceneList lines={lines} onJump={jumpToScene} onClose={() => setShowScenes(false)} />
-      )}
-
-      {/* Voice picker dropdown */}
-      {showVoicePicker && (
-        <VoicePicker
-          characters={otherCharacters}
-          voiceMap={kokoroVoiceMap}
-          kokoroReady={kokoroState === "ready"}
-          onVoiceChange={handleVoiceChange}
-          onClose={() => setShowVoicePicker(false)}
-        />
       )}
 
       {/* Script */}
