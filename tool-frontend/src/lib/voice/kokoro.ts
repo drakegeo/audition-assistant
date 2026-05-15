@@ -41,7 +41,7 @@ function playPCM(audio: Float32Array<ArrayBufferLike>, sampleRate: number, onEnd
   src.buffer = buf;
   src.connect(ctx.destination);
   src.onended = () => { void ctx.close(); onEnd(); };
-  src.start();
+  void ctx.resume().then(() => src.start());
   return () => {
     try { src.stop(); } catch { /* already stopped */ }
     void ctx.close();

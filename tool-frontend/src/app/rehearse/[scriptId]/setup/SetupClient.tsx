@@ -49,14 +49,19 @@ export default function SetupClient({ scriptId }: { scriptId: string }) {
     setVoiceMap((prev) => new Map(prev).set(charName, voice));
   }
 
-  function handlePreview(charName: string) {
+  async function handlePreview(charName: string) {
     cancelRef.current?.();
     setPreviewing(charName);
+    if (!kokoroReady) {
+      await loadKokoro().catch(() => {});
+      setKokoroReady(true);
+    }
     const voice = voiceMap.get(charName) ?? KOKORO_VOICES[0];
-    void speakLineKokoro(`Hi, I'm ${charName}.`, voice, () => {
+    const cancel = await speakLineKokoro(`Hi, I'm ${charName}.`, voice, () => {
       setPreviewing(null);
       cancelRef.current = null;
-    }).then((cancel) => { cancelRef.current = cancel; });
+    });
+    cancelRef.current = cancel;
   }
 
   function handleStart() {
@@ -132,8 +137,8 @@ export default function SetupClient({ scriptId }: { scriptId: string }) {
                     ))}
                   </select>
                   <button
-                    onClick={() => handlePreview(char.name)}
-                    disabled={!kokoroReady || previewing !== null}
+                    onClick={() => { void handlePreview(char.name); }}
+                    disabled={previewing !== null}
                     className="text-blue-500 hover:text-blue-700 disabled:text-gray-300 text-sm px-1 w-6 text-center"
                     aria-label={`Preview ${char.name}`}
                   >
