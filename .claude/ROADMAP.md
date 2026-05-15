@@ -63,6 +63,26 @@ User picks their character and rehearses.
 
 ## Post-MVP (not yet scheduled — `TODO(post-mvp)`)
 
+### Human-sounding voice — HIGH PRIORITY post-MVP
+
+The Web Speech API TTS is mechanical and robotic. This is the most noticeable quality
+gap vs a real scene partner. Options in order of effort:
+
+| Option | Quality | Cost | Effort |
+|--------|---------|------|--------|
+| Cartesia Sonic | Excellent | ~$0.065/1k chars | Low — REST API, drop-in |
+| ElevenLabs | Best | ~$0.18/1k chars | Low — REST API |
+| Kokoro / XTTS (self-hosted) | Very good | Free (needs GPU) | High |
+| Pipecat pipeline (see below) | Best + real-time | Varies | High |
+
+**Recommended first step:** swap Web Speech API TTS for Cartesia or ElevenLabs for
+character lines. Keep Web Speech API for scene headers / stage directions (free).
+Abstract behind a `TTSClient` interface (same pattern as `LLMClient`) so the provider
+is swappable with one env var change.
+
+**STT upgrade:** move from Web Speech API to Deepgram for word-level accuracy and
+reliable word highlighting. Deepgram free tier handles ~45 min/month.
+
 ### Voice upgrade — Pipecat integration
 
 Replace or augment Web Speech API with a Pipecat-based voice pipeline for:

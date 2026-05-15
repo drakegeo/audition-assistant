@@ -16,9 +16,11 @@ Append-only record of architectural and product choices. **When you make a non-t
 - ✅ Free at any usage volume. No per-minute costs.
 - ✅ No streaming infrastructure on the backend. Backend stays stateless and simple.
 - ✅ Lowest possible latency (no network hop for voice).
-- ❌ Voice quality is OS/browser-dependent. We'll likely upgrade to ElevenLabs post-MVP.
+- ❌ Voice quality is OS/browser-dependent and robotic — **this is the biggest UX gap vs a real scene partner.** Upgrade to Cartesia or ElevenLabs post-MVP.
 - ❌ Firefox does not support STT (`SpeechRecognition`). Show a browser-compat warning.
-- ❌ STT accuracy with theatrical delivery (whispers, shouts, accents) is mediocre. The "strict match" cue mode needs forgiving fuzzy matching.
+- ❌ STT accuracy with theatrical delivery (whispers, shouts, accents) is mediocre. Upgrade to Deepgram post-MVP for word-level accuracy.
+
+**Planned upgrade path:** abstract TTS behind a `TTSClient` interface (same pattern as `LLMClient`). First upgrade: Cartesia Sonic for character lines (~$0.065/1k chars). Keep Web Speech API for stage directions/headers.
 
 ---
 
