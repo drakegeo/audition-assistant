@@ -24,7 +24,7 @@ export function speakLine(
   text: string,
   voice: SpeechSynthesisVoice,
   onEnd: () => void,
-  rate = 0.95,
+  rate = 0.80,
   pitch = 1.0,
 ): () => void {
   const chunks = chunkText(text);

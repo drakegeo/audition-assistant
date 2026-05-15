@@ -194,7 +194,7 @@ export default function RehearsalView({ script, userCharacterId, cueMode }: Prop
       const voice = voiceMap.get(charName) ?? voiceMap.get("__narrator__");
       if (!voice) { clearTimeout(timeoutId); return; }
       const charIndex = script.characters.findIndex((c) => c.name === charName);
-      const rate = 0.92 + (charIndex >= 0 ? (charIndex % 3) * 0.04 : 0);
+      const rate = 0.75 + (charIndex >= 0 ? (charIndex % 3) * 0.03 : 0);
       const pitch = 1.0 + (charIndex >= 0 ? (charIndex % 2) * 0.1 : 0);
       cancelPlayback = speakLine(line.text, voice, () => { clearTimeout(timeoutId); dispatch({ type: "tts_ended" }); }, rate, pitch);
     }
