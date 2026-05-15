@@ -75,30 +75,50 @@ User picks their character and rehearses.
 - No emotion control — significantly better than Web Speech API but flat delivery
 - Status: implemented in Phase 3
 
-#### Premium tier — Emotional/Conscious voice
+#### Premium tier — OpenAI TTS HD (chosen approach)
 
-**Option A — Parler TTS + LLM (open-source, best for consciousness)**
-- Instruction-based: LLM analyzes scene → writes style prompt → Parler TTS generates audio
-- e.g. "An angry man speaks loudly and sharply" / "A nervous woman hesitates"
-- True scene-awareness: LLM understands the character's emotional state per line
-- Needs a server ~2 GB RAM (Fly.io ~$5/mo) + Pipecat WebSocket pipeline
-- Free to run, but requires infrastructure investment
+**Why OpenAI TTS HD:**
+- $0.030 / 1k chars — affordable at scale without volume deals
+- 57 languages — genuine differentiator vs ScenePartner (English-only)
+- Good quality for rehearsal; not ElevenLabs-level but far better than Kokoro for expressiveness
+- Simple REST API, no WebSocket pipeline needed
+- Call from backend → cache result → serve from Supabase Storage
 
-**Option B — Cartesia Sonic (API, easiest drop-in)**
-- ~$0.065 / 1k chars, streaming, low latency
-- Emotion-aware styles, excellent quality
-- Call from browser directly — no server changes
-- Implement via `TTSClient` interface, swap with one env var
+**Unit economics (per user per month):**
+- A 6-page audition side = ~4,500 chars of non-user lines
+- First TTS generation: ~$0.14 per scene
+- Every repeat run: $0.00 (served from cache)
+- Cap: 3 new scripts/month on premium = max ~$0.42/month cost per user
+- Charge €10–15/month → ~95% gross margin on voice costs
 
-**Option C — ElevenLabs**
-- ~$0.18 / 1k chars, best quality + full emotion control
-- Same integration pattern as Cartesia
+**Caching strategy (critical):**
+- Generate TTS per line on first request → store audio file in Supabase Storage
+- Key: `tts/{script_id}/{line_id}/{voice_id}.mp3`
+- On subsequent runs, stream directly from Storage — no API call
+- Two users rehearsing the same script share the cache (first user pays, all others free)
+- Do NOT cap rehearsal session count — unlimited repetitions is the product's value prop
+
+**Usage limits (premium):**
+- 3 new script uploads/month (bounds first-generation cost)
+- Unlimited rehearsal sessions on any uploaded script
+- Unlimited language selection (voice IDs vary per language, same pricing)
+
+**Multi-language notes:**
+- TTS quality in major European languages (French, German, Spanish, Italian, Dutch) is solid on OpenAI
+- STT (Web Speech API) quality degrades for non-English theatrical speech — cue detection will be less reliable; warn users
+- Per-language voice variety is lower than English — fewer distinct character voices available
+
+**Other options considered and why deprioritised:**
+- ElevenLabs: ~$0.18/1k chars, best quality, but unit economics only work with enterprise volume discounts ScenePartner likely has. At retail pricing, Pro-tier users would cost more than they pay.
+- Cartesia: Good quality, lower latency, but fewer languages and smaller voice library.
+- Azure / Google Neural TTS: Cheapest ($0.004–0.016/1k), 100+ languages, but "corporate" sound — not expressive enough for actors.
+- Parler TTS + LLM: Best emotional range, but requires a dedicated GPU server ($5–20/mo on Fly.io) and a real-time WebSocket pipeline. Post-MVP if the premium tier proves out.
 
 **STT upgrade (any tier):** Deepgram for word-level accuracy + reliable highlighting.
 Free tier ~45 min/month. Replaces Web Speech API STT only.
 
 **Architecture:** Abstract behind a `TTSClient` interface (same pattern as `LLMClient`).
-Free users get Kokoro WASM; premium users get Cartesia or Parler TTS.
+Free users get Kokoro WASM; premium users get OpenAI TTS HD with Supabase Storage cache.
 
 ### Voice upgrade — Pipecat integration (consciousness pipeline)
 
