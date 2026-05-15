@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { deleteScript, getScript, getScriptStatus, renameScript } from "@/lib/api";
+import { loadKokoro } from "@/lib/voice/kokoro";
 import type { Character, ScriptListItem } from "@/types/script";
 
 const POLL_MS = 2000;
@@ -56,6 +57,7 @@ export default function ScriptCard({ script, onDeleted, onStatusChange }: Props)
 
   async function handleRehearse() {
     if (showPicker) { setShowPicker(false); return; }
+    void loadKokoro();
     const full = await getScript(script.id);
     setCharacters(full.characters);
     setShowPicker(true);
