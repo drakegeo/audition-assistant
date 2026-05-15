@@ -4,7 +4,7 @@ import logging
 from ..llm.factory import get_llm_client
 from ..storage import db, pdf_storage
 from .parser import parse_script
-from .pdf_extractor import extract_text
+from .pdf_extractor import extract_text_with_ocr
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +28,11 @@ async def run_parse_worker(script_id: str, user_id: str) -> None:
             return
 
         pdf_bytes = await pdf_storage.download_pdf(script_row["storage_path"])
-        text = extract_text(pdf_bytes)
+        llm = get_llm_client()
+        text = await extract_text_with_ocr(pdf_bytes, llm)
         word_count = len(text.split())
         logger.info("pdf_extracted", extra={"script_id": script_id, "words": word_count})
 
-        llm = get_llm_client()
         parsed = await _parse_with_retry(text, llm)
 
         await db.write_parsed_script(script_id, parsed)
