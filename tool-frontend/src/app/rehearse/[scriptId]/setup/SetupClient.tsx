@@ -8,14 +8,10 @@ import type { Script } from "@/types/script";
 
 // Maps each Kokoro voice to Web Speech params so the preview approximates the accent/tone.
 const VOICE_PREVIEW_PARAMS: Record<KokoroVoice, { lang: string; rate: number; pitch: number }> = {
-  af_heart:   { lang: "en-US", rate: 0.90, pitch: 1.40 },
-  am_adam:    { lang: "en-US", rate: 1.00, pitch: 0.80 },
-  bf_emma:    { lang: "en-GB", rate: 0.95, pitch: 1.30 },
-  bm_george:  { lang: "en-GB", rate: 0.85, pitch: 0.60 },
-  af_bella:   { lang: "en-US", rate: 1.10, pitch: 1.60 },
-  am_michael: { lang: "en-US", rate: 0.85, pitch: 0.50 },
-  af_sarah:   { lang: "en-US", rate: 0.92, pitch: 1.20 },
-  bm_lewis:   { lang: "en-GB", rate: 0.88, pitch: 0.70 },
+  af_heart:  { lang: "en-US", rate: 1.05, pitch: 1.70 },
+  am_adam:   { lang: "en-US", rate: 0.95, pitch: 0.50 },
+  bf_emma:   { lang: "en-GB", rate: 0.90, pitch: 1.55 },
+  bm_george: { lang: "en-GB", rate: 0.85, pitch: 0.40 },
 };
 
 function previewVoice(charName: string, voice: KokoroVoice, onEnd: () => void): () => void {

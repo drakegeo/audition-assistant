@@ -2,14 +2,10 @@
 // ~80 MB download cached by browser; runs entirely client-side, no server cost.
 
 export const KOKORO_VOICES = [
-  "af_heart",   // American Female (warm)
-  "am_adam",    // American Male
-  "bf_emma",    // British Female
-  "bm_george",  // British Male
-  "af_bella",   // American Female (bright)
-  "am_michael", // American Male (deep)
-  "af_sarah",   // American Female (soft)
-  "bm_lewis",   // British Male (rich)
+  "af_heart",  // American Female
+  "am_adam",   // American Male
+  "bf_emma",   // British Female
+  "bm_george", // British Male
 ] as const;
 
 export type KokoroVoice = (typeof KOKORO_VOICES)[number];
@@ -70,14 +66,10 @@ export async function speakLineKokoro(
 }
 
 export const VOICE_LABELS: Record<KokoroVoice, string> = {
-  af_heart:   "American Female · warm",
-  am_adam:    "American Male · natural",
-  bf_emma:    "British Female · clear",
-  bm_george:  "British Male · deep",
-  af_bella:   "American Female · bright",
-  am_michael: "American Male · rich",
-  af_sarah:   "American Female · soft",
-  bm_lewis:   "British Male · measured",
+  af_heart:  "American Female",
+  am_adam:   "American Male",
+  bf_emma:   "British Female",
+  bm_george: "British Male",
 };
 
 // Assigns voices to non-user character names deterministically. Narrator gets index 0.
