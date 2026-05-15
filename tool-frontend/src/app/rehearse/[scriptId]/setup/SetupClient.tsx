@@ -3,28 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getScript } from "@/lib/api";
-import { assignKokoroVoices, KOKORO_VOICES, VOICE_LABELS, type KokoroVoice } from "@/lib/voice/kokoro";
+import { assignKokoroVoices, KOKORO_VOICES, VOICE_LABELS, VOICE_WEB_PARAMS, pickWebSpeechVoice, type KokoroVoice } from "@/lib/voice/kokoro";
 import type { Script } from "@/types/script";
-
-// Maps each Kokoro voice to Web Speech params so the preview approximates the accent/tone.
-const VOICE_PREVIEW_PARAMS: Record<KokoroVoice, { lang: string; rate: number; pitch: number }> = {
-  af_heart:  { lang: "en-US", rate: 1.05, pitch: 1.70 },
-  am_adam:   { lang: "en-US", rate: 0.95, pitch: 0.50 },
-  bf_emma:   { lang: "en-GB", rate: 0.90, pitch: 1.55 },
-  bm_george: { lang: "en-GB", rate: 0.85, pitch: 0.40 },
-};
 
 function previewVoice(charName: string, voice: KokoroVoice, onEnd: () => void): () => void {
   if (typeof window === "undefined" || !window.speechSynthesis) { onEnd(); return () => {}; }
   window.speechSynthesis.cancel();
-  const { lang, rate, pitch } = VOICE_PREVIEW_PARAMS[voice];
+  const { rate, pitch } = VOICE_WEB_PARAMS[voice];
+  const voices = window.speechSynthesis.getVoices();
   const utter = new SpeechSynthesisUtterance(`Hi, I'm ${charName}.`);
-  utter.lang = lang;
+  const match = pickWebSpeechVoice(voice, voices);
+  if (match) utter.voice = match;
   utter.rate = rate;
   utter.pitch = pitch;
-  // prefer a voice matching the target locale
-  const match = window.speechSynthesis.getVoices().find((v) => v.lang.startsWith(lang));
-  if (match) utter.voice = match;
   utter.onend = onEnd;
   utter.onerror = () => onEnd();
   window.speechSynthesis.speak(utter);

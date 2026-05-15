@@ -72,6 +72,33 @@ export const VOICE_LABELS: Record<KokoroVoice, string> = {
   bm_george: "British Male",
 };
 
+export const VOICE_WEB_PARAMS: Record<KokoroVoice, { lang: string; rate: number; pitch: number; female: boolean }> = {
+  af_heart:  { lang: "en-US", rate: 0.80, pitch: 1.20, female: true  },
+  am_adam:   { lang: "en-US", rate: 0.78, pitch: 0.88, female: false },
+  bf_emma:   { lang: "en-GB", rate: 0.78, pitch: 1.15, female: true  },
+  bm_george: { lang: "en-GB", rate: 0.75, pitch: 0.78, female: false },
+};
+
+const FEMALE_HINTS = ["female", "woman", "zira", "samantha", "victoria", "kate", "hazel", "tessa", "moira", "fiona", "karen", "natasha", "eva", "susan", "emma"];
+const MALE_HINTS   = ["male",   "man",   "david", "mark", "daniel", "james", "fred", "tom", "alex", "reed", "george", "richard"];
+
+export function pickWebSpeechVoice(voice: KokoroVoice, voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined {
+  const { lang, female } = VOICE_WEB_PARAMS[voice];
+  const langCode = lang.split("-")[0];
+  const pool = voices.filter((v) => v.lang.toLowerCase().startsWith(lang.toLowerCase()))
+    .concat(voices.filter((v) => v.lang.toLowerCase().startsWith(langCode) && !v.lang.toLowerCase().startsWith(lang.toLowerCase())));
+  const fallback = voices.filter((v) => v.lang.toLowerCase().startsWith("en"));
+  const candidates = pool.length > 0 ? pool : fallback;
+  if (candidates.length === 0) return undefined;
+  const hints = female ? FEMALE_HINTS : MALE_HINTS;
+  const anti  = female ? MALE_HINTS   : FEMALE_HINTS;
+  return (
+    candidates.find((v) => hints.some((h) => v.name.toLowerCase().includes(h))) ??
+    candidates.find((v) => !anti.some((h) => v.name.toLowerCase().includes(h))) ??
+    candidates[0]
+  );
+}
+
 // Assigns voices to non-user character names deterministically. Narrator gets index 0.
 export function assignKokoroVoices(characterNames: string[]): Map<string, KokoroVoice> {
   const map = new Map<string, KokoroVoice>();

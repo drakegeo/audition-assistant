@@ -3,10 +3,10 @@
 import React, { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { CueMode, Line, Script } from "@/types/script";
 import { speakLine, durationEstimateMs } from "@/lib/voice/tts";
-import { loadKokoro, speakLineKokoro, assignKokoroVoices, isKokoroReady, KOKORO_VOICES, type KokoroVoice } from "@/lib/voice/kokoro";
+import { loadKokoro, speakLineKokoro, assignKokoroVoices, isKokoroReady, KOKORO_VOICES, VOICE_WEB_PARAMS, pickWebSpeechVoice, type KokoroVoice } from "@/lib/voice/kokoro";
 import { createSTT } from "@/lib/voice/stt";
 import { createCueDetector } from "@/lib/voice/cue";
-import { assignVoices, loadVoices } from "@/lib/voice/support";
+import { loadVoices } from "@/lib/voice/support";
 import { reduce } from "@/lib/voice/session";
 import type { SessionState, SessionEvent } from "@/lib/voice/session";
 
@@ -118,7 +118,7 @@ export default function RehearsalView({ script, userCharacterId, cueMode }: Prop
   );
   const dispatch = useCallback((e: SessionEvent) => rawDispatch(e), [rawDispatch]);
 
-  const [voiceMap, setVoiceMap] = useState<Map<string, SpeechSynthesisVoice>>(new Map());
+  const [allVoices, setAllVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [kokoroState, setKokoroState] = useState<"loading" | "ready" | "failed">("loading");
   const [kokoroVoiceMap, setKokoroVoiceMap] = useState<Map<string, KokoroVoice>>(new Map());
   const [showSkipPrompt, setShowSkipPrompt] = useState(false);
@@ -151,12 +151,7 @@ export default function RehearsalView({ script, userCharacterId, cueMode }: Prop
     } else {
       setKokoroVoiceMap(assignKokoroVoices(otherChars));
     }
-    loadVoices().then((voices) => {
-      const narrator = voices.find((v) => v.lang.toLowerCase().startsWith("en")) ?? voices[0];
-      const assigned = assignVoices(otherChars, voices);
-      assigned.set("__narrator__", narrator);
-      setVoiceMap(assigned);
-    });
+    loadVoices().then((voices) => setAllVoices(voices));
   }, [script, userCharacterId]);
 
   useEffect(() => {
@@ -191,17 +186,18 @@ export default function RehearsalView({ script, userCharacterId, cueMode }: Prop
         if (cancelled) cancelPlayback();
       })();
     } else {
-      const voice = voiceMap.get(charName) ?? voiceMap.get("__narrator__");
+      const kokoroVoice = kokoroVoiceMap.get(charName) ?? KOKORO_VOICES[0];
+      const { rate, pitch } = VOICE_WEB_PARAMS[kokoroVoice];
+      const voice = pickWebSpeechVoice(kokoroVoice, allVoices)
+        ?? allVoices.find((v) => v.lang.toLowerCase().startsWith("en"))
+        ?? allVoices[0];
       if (!voice) { clearTimeout(timeoutId); return; }
-      const charIndex = script.characters.findIndex((c) => c.name === charName);
-      const rate = 0.75 + (charIndex >= 0 ? (charIndex % 3) * 0.03 : 0);
-      const pitch = 1.0 + (charIndex >= 0 ? (charIndex % 2) * 0.1 : 0);
       cancelPlayback = speakLine(line.text, voice, () => { clearTimeout(timeoutId); dispatch({ type: "tts_ended" }); }, rate, pitch);
     }
 
     return () => { cancelled = true; clearTimeout(timeoutId); cancelPlayback(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, voiceMap, kokoroVoiceMap]);
+  }, [state, allVoices, kokoroVoiceMap]);
 
   // LISTENING
   useEffect(() => {
