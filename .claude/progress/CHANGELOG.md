@@ -12,6 +12,20 @@ Format:
 
 ---
 
+## 2026-05-15 — Script library + 3-script free plan quota
+
+- **Script library:** Upload page replaced with "My Scripts" library. Users can have up to 3 scripts simultaneously. Each shown as a card with title, status, inline character picker, and delete button.
+- **Inline rename:** Click any script title → editable input. Press Enter or blur to save. Calls `PATCH /scripts/{id}`.
+- **Quota bar:** "2 / 3 scripts used" progress bar at the top. Turns red at limit. Upload form hidden when limit reached.
+- **Per-card polling:** Each card independently polls its own script status while parsing. No longer a global single-script poll.
+- **Soft-delete migration:** `deleted_at timestamptz` column added to `scripts` table. Old hard-delete replaced with soft-delete so quota counting works across script replacements.
+- **Quota: 3 lifetime uploads** (down from 5). Cannot be bypassed by deleting and re-uploading — soft-deleted rows count.
+- **Backend new endpoints:** `GET /scripts` (list), `GET /scripts/{id}` (full script), `PATCH /scripts/{id}` (rename).
+- **Rehearsal page** now fetches script by ID (`getScript(scriptId)`) instead of the generic `/scripts/current`.
+- 21 backend tests passing. TypeScript: 0 errors.
+
+---
+
 ## 2026-05-15 — Deployed to Render + Vercel; production live
 
 - Backend deployed to Render (Python web service, `render.yaml` auto-detected).

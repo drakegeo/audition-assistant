@@ -54,50 +54,58 @@ User picks their character and rehearses.
 4. **Polish** — the items below.
 
 **Deliverables:**
-- ✅ Firefox STT warning already shown (basic) — improve UI, offer manual-advance mode
+- ✅ Firefox STT warning shown
+- ✅ Per-user upload quota — 3 scripts lifetime, soft-delete tracking
+- ✅ Script library — card view, inline rename, quota progress bar
 - Cue mode picker in rehearsal UI (currently hardcoded to `hybrid`)
-- Adjustable silence threshold slider (pause/hybrid mode)
-- Voice preview/picker per character (let user override auto-assigned voice)
-- Friendly error states for: mic permission denied, no browser voices, parse fail shown in UI
-- Per-user upload quota — implement `_check_quota` (Phase-3 stub already in place)
+- Adjustable silence threshold slider
+- Voice preview/picker per character
+- Friendly error states for mic permission denied, no browser voices
 - Basic analytics (Plausible or PostHog free tier)
 
 ## Post-MVP (not yet scheduled — `TODO(post-mvp)`)
 
-### Human-sounding voice — HIGH PRIORITY post-MVP
+### Voice upgrade tiers
 
-The Web Speech API TTS is mechanical and robotic. This is the most noticeable quality
-gap vs a real scene partner. Options in order of effort:
+#### Free tier — Kokoro WASM (browser, open-source)
+- Model: `onnx-community/Kokoro-82M-v1.0` via `kokoro-js` npm package
+- Runs 100% in the browser via WebAssembly — no server cost
+- ~80 MB one-time download, cached by browser
+- 8 English voices (American + British, male + female)
+- No emotion control — significantly better than Web Speech API but flat delivery
+- Status: implemented in Phase 3
 
-| Option | Quality | Cost | Effort |
-|--------|---------|------|--------|
-| Cartesia Sonic | Excellent | ~$0.065/1k chars | Low — REST API, drop-in |
-| ElevenLabs | Best | ~$0.18/1k chars | Low — REST API |
-| Kokoro / XTTS (self-hosted) | Very good | Free (needs GPU) | High |
-| Pipecat pipeline (see below) | Best + real-time | Varies | High |
+#### Premium tier — Emotional/Conscious voice
 
-**Recommended first step:** swap Web Speech API TTS for Cartesia or ElevenLabs for
-character lines. Keep Web Speech API for scene headers / stage directions (free).
-Abstract behind a `TTSClient` interface (same pattern as `LLMClient`) so the provider
-is swappable with one env var change.
+**Option A — Parler TTS + LLM (open-source, best for consciousness)**
+- Instruction-based: LLM analyzes scene → writes style prompt → Parler TTS generates audio
+- e.g. "An angry man speaks loudly and sharply" / "A nervous woman hesitates"
+- True scene-awareness: LLM understands the character's emotional state per line
+- Needs a server ~2 GB RAM (Fly.io ~$5/mo) + Pipecat WebSocket pipeline
+- Free to run, but requires infrastructure investment
 
-**STT upgrade:** move from Web Speech API to Deepgram for word-level accuracy and
-reliable word highlighting. Deepgram free tier handles ~45 min/month.
+**Option B — Cartesia Sonic (API, easiest drop-in)**
+- ~$0.065 / 1k chars, streaming, low latency
+- Emotion-aware styles, excellent quality
+- Call from browser directly — no server changes
+- Implement via `TTSClient` interface, swap with one env var
 
-### Voice upgrade — Pipecat integration
+**Option C — ElevenLabs**
+- ~$0.18 / 1k chars, best quality + full emotion control
+- Same integration pattern as Cartesia
 
-Replace or augment Web Speech API with a Pipecat-based voice pipeline for:
-- **Accurate word-level STT** — Deepgram or Whisper instead of Web Speech API
-- **Expressive TTS** — Kokoro / Cartesia / ElevenLabs instead of browser voices
-- **Character "consciousness"** — LLM-driven delivery with emotion, pacing, personality
+**STT upgrade (any tier):** Deepgram for word-level accuracy + reliable highlighting.
+Free tier ~45 min/month. Replaces Web Speech API STT only.
 
-Architectural impact: rehearsal session moves from fully browser-side to a real-time
-WebSocket session through the backend. Render free tier won't handle this — requires
-Fly.io or a dedicated instance. Design as an opt-in premium mode with a `VoiceClient`
-interface that abstracts over Web Speech API (free) vs Pipecat (paid/premium).
+**Architecture:** Abstract behind a `TTSClient` interface (same pattern as `LLMClient`).
+Free users get Kokoro WASM; premium users get Cartesia or Parler TTS.
 
-Free self-hosted stack: Deepgram free tier (STT) + XTTS/Kokoro (TTS, needs GPU) + Groq (LLM).
-Paid but easy stack: Deepgram + Cartesia + Groq.
+### Voice upgrade — Pipecat integration (consciousness pipeline)
+
+Full real-time pipeline: browser mic → WebSocket → Pipecat → STT + LLM + TTS → browser.
+LLM understands scene context and responds in character with appropriate emotion.
+Requires separate server (Fly.io or paid Render). Not compatible with free tier.
+Build as opt-in premium mode after Cartesia integration is proven.
 
 - **Script library** — multiple scripts per user, switch between them
 - **Share-link** — read-only view a coach can open

@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { CueMode, Line, Script } from "@/types/script";
 import { speakLine, durationEstimateMs } from "@/lib/voice/tts";
+import { loadKokoro, speakLineKokoro, assignKokoroVoices, isKokoroReady, KOKORO_VOICES, type KokoroVoice } from "@/lib/voice/kokoro";
 import { createSTT } from "@/lib/voice/stt";
 import { createCueDetector } from "@/lib/voice/cue";
 import { assignVoices, loadVoices } from "@/lib/voice/support";
@@ -118,6 +119,8 @@ export default function RehearsalView({ script, userCharacterId, cueMode }: Prop
   const dispatch = useCallback((e: SessionEvent) => rawDispatch(e), [rawDispatch]);
 
   const [voiceMap, setVoiceMap] = useState<Map<string, SpeechSynthesisVoice>>(new Map());
+  const [kokoroState, setKokoroState] = useState<"loading" | "ready" | "failed">("loading");
+  const [kokoroVoiceMap, setKokoroVoiceMap] = useState<Map<string, KokoroVoice>>(new Map());
   const [showSkipPrompt, setShowSkipPrompt] = useState(false);
   const [showScenes, setShowScenes] = useState(false);
   // confirmedWords: from final STT results — reliably spoken (solid blue)
@@ -134,16 +137,23 @@ export default function RehearsalView({ script, userCharacterId, cueMode }: Prop
   const userCharName = charMap.get(userCharacterId) ?? "";
 
   useEffect(() => {
+    const otherChars = script.characters
+      .filter((c) => c.id !== userCharacterId)
+      .map((c) => c.name);
+    setKokoroVoiceMap(assignKokoroVoices(otherChars));
     loadVoices().then((voices) => {
-      const otherChars = script.characters
-        .filter((c) => c.id !== userCharacterId)
-        .map((c) => c.name);
       const narrator = voices.find((v) => v.lang.toLowerCase().startsWith("en")) ?? voices[0];
       const assigned = assignVoices(otherChars, voices);
       assigned.set("__narrator__", narrator);
       setVoiceMap(assigned);
     });
   }, [script, userCharacterId]);
+
+  useEffect(() => {
+    loadKokoro()
+      .then(() => setKokoroState("ready"))
+      .catch(() => setKokoroState("failed"));
+  }, []);
 
   // Scroll current line into view
   useEffect(() => {
@@ -156,17 +166,32 @@ export default function RehearsalView({ script, userCharacterId, cueMode }: Prop
     if (state.kind !== "speaking") return;
     const line = lines[state.lineIndex];
     const charName = line.character_id ? (charMap.get(line.character_id) ?? "__narrator__") : "__narrator__";
-    const voice = voiceMap.get(charName) ?? voiceMap.get("__narrator__");
-    if (!voice) return;
+
+    let cancelled = false;
+    let cancelPlayback = () => {};
     const timeoutId = setTimeout(() => dispatch({ type: "tts_ended" }), durationEstimateMs(line.text));
-    // Vary rate/pitch slightly per character so voices feel more distinct
-    const charIndex = script.characters.findIndex((c) => c.name === charName);
-    const rate = 0.92 + (charIndex >= 0 ? (charIndex % 3) * 0.04 : 0);
-    const pitch = 1.0 + (charIndex >= 0 ? (charIndex % 2) * 0.1 : 0);
-    const cancel = speakLine(line.text, voice, () => { clearTimeout(timeoutId); dispatch({ type: "tts_ended" }); }, rate, pitch);
-    return () => { clearTimeout(timeoutId); cancel(); };
+
+    if (isKokoroReady()) {
+      const voiceId = kokoroVoiceMap.get(charName) ?? KOKORO_VOICES[0];
+      void (async () => {
+        if (cancelled) return;
+        cancelPlayback = await speakLineKokoro(line.text, voiceId, () => {
+          if (!cancelled) { clearTimeout(timeoutId); dispatch({ type: "tts_ended" }); }
+        });
+        if (cancelled) cancelPlayback();
+      })();
+    } else {
+      const voice = voiceMap.get(charName) ?? voiceMap.get("__narrator__");
+      if (!voice) { clearTimeout(timeoutId); return; }
+      const charIndex = script.characters.findIndex((c) => c.name === charName);
+      const rate = 0.92 + (charIndex >= 0 ? (charIndex % 3) * 0.04 : 0);
+      const pitch = 1.0 + (charIndex >= 0 ? (charIndex % 2) * 0.1 : 0);
+      cancelPlayback = speakLine(line.text, voice, () => { clearTimeout(timeoutId); dispatch({ type: "tts_ended" }); }, rate, pitch);
+    }
+
+    return () => { cancelled = true; clearTimeout(timeoutId); cancelPlayback(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, voiceMap]);
+  }, [state, voiceMap, kokoroVoiceMap]);
 
   // LISTENING
   useEffect(() => {
@@ -275,6 +300,9 @@ export default function RehearsalView({ script, userCharacterId, cueMode }: Prop
             {state.kind === "listening" && <span className="ml-2 text-blue-600">● Listening</span>}
             {state.kind === "speaking" && <span className="ml-2 text-gray-400">Speaking…</span>}
           </span>
+          {kokoroState === "loading" && (
+            <span className="text-xs text-gray-400 animate-pulse">Loading voice model…</span>
+          )}
         </div>
       </div>
 
