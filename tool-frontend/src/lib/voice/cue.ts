@@ -2,26 +2,35 @@ import type { CueMode } from "@/types/script";
 
 export type CueCallback = () => void;
 
-const PAUSE_THRESHOLD_MS = 1500;
-const HYBRID_PAUSE_THRESHOLD_MS = 2000;
-const MATCH_THRESHOLD = 0.7;
+const PAUSE_THRESHOLD_MS = 1000;
+const HYBRID_PAUSE_THRESHOLD_MS = 1500;
+
+const MIN_WORD_COVERAGE = 0.6;
 
 function normalize(s: string): string {
   return s
     .toLowerCase()
-    .replace(/\([^)]*\)/g, "")
-    .replace(/[^\w\s]/g, "")
+    .replace(/\([^)]*\)/g, "") // strip inline stage directions
+    .replace(/[^\w\s]/g, "")   // strip punctuation
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function similarity(transcript: string, expected: string): number {
-  const tTokens = new Set(normalize(transcript).split(/\s+/).filter(Boolean));
-  const eTokens = new Set(normalize(expected).split(/\s+/).filter(Boolean));
-  if (tTokens.size === 0 || eTokens.size === 0) return 0;
-  const intersection = [...tTokens].filter((x) => eTokens.has(x)).length;
-  const union = new Set([...tTokens, ...eTokens]).size;
-  return intersection / union;
+function tokenSet(s: string): Set<string> {
+  return new Set(normalize(s).split(/\s+/).filter(Boolean));
+}
+
+/** Fraction of the expected line's words present in the transcript. */
+function wordCoverage(transcript: string, expected: string): number {
+  const t = tokenSet(transcript);
+  const e = tokenSet(expected);
+  if (e.size === 0) return 1;
+  return [...e].filter((w) => t.has(w)).length / e.size;
+}
+
+/** True when the user has said ≥60% of the expected line's words. */
+function lineComplete(transcript: string, expected: string): boolean {
+  return wordCoverage(transcript, expected) >= MIN_WORD_COVERAGE;
 }
 
 export function createCueDetector(
@@ -49,18 +58,20 @@ export function createCueDetector(
   return function onTranscript(transcript: string) {
     if (fired) return;
 
+    const complete = lineComplete(transcript, expectedText);
+
     if (mode === "pause") {
-      resetPauseTimer();
+      // Silence timer only starts once coverage + last word conditions are met.
+      if (complete) resetPauseTimer();
       return;
     }
 
     if (mode === "match") {
-      if (similarity(transcript, expectedText) >= MATCH_THRESHOLD) fire();
+      if (complete) fire();
       return;
     }
 
-    // hybrid: both run, first wins
-    resetPauseTimer();
-    if (similarity(transcript, expectedText) >= MATCH_THRESHOLD) fire();
+    // hybrid: fire after silence once 60% coverage is reached.
+    if (complete) resetPauseTimer();
   };
 }

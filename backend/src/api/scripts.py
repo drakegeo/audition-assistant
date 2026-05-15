@@ -98,10 +98,17 @@ async def get_script_status(
     row = await db.get_script_status_for_user(script_id, user_id)
     if row is None:
         raise HTTPException(status_code=404, detail={"error": "not_found", "detail": "Script not found"})
+    hints = {
+        "queued": "Waiting to start…",
+        "parsing": "AI is reading your script — this takes 1–2 min for a full play…",
+        "ready": None,
+        "failed": None,
+    }
     return ScriptStatusResponse(
         script_id=row["id"],
         status=row["status"],
         parse_error=row.get("parse_error"),
+        progress_hint=hints.get(row["status"]),
     )
 
 

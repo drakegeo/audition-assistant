@@ -20,14 +20,17 @@ app = FastAPI(title="audition-assistant API", version="0.1.0")
 
 _origins = [
     o.strip()
-    for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+    for o in os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000",
+    ).split(",")
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
     allow_credentials=False,
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["*"],  # safe — we use Bearer tokens not cookies
     allow_methods=["*"],
 )
 

@@ -24,8 +24,15 @@ export function createSTT(
   let active = false;
 
   rec.onresult = (event: SpeechRecognitionEvent) => {
-    const result = event.results[event.results.length - 1];
-    onTranscript(result[0].transcript, result.isFinal);
+    // Build the full session transcript by concatenating ALL results so far.
+    // event.results[last] alone is only the latest segment — previous segments
+    // are in results[0..n-2] and must be included for coverage checks to work.
+    let fullText = "";
+    for (let i = 0; i < event.results.length; i++) {
+      fullText += (i > 0 ? " " : "") + event.results[i][0].transcript;
+    }
+    const lastResult = event.results[event.results.length - 1];
+    onTranscript(fullText.trim(), lastResult.isFinal);
   };
 
   rec.onerror = (event: SpeechRecognitionErrorEvent) => {

@@ -1,10 +1,21 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { uploadScript, getScriptStatus } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { getCurrentScript, getScriptStatus, uploadScript } from "@/lib/api";
 import type { Character, ScriptStatus } from "@/types/script";
 
+function useElapsed(active: boolean) {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    if (!active) { setSeconds(0); return; }
+    const id = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [active]);
+  return seconds;
+}
+
 type Step =
+  | { kind: "loading" }
   | { kind: "idle" }
   | { kind: "uploading" }
   | { kind: "polling"; scriptId: string; status: ScriptStatus }
@@ -18,23 +29,40 @@ interface Props {
 }
 
 export default function UploadPanel({ onCharacterSelected }: Props) {
-  const [step, setStep] = useState<Step>({ kind: "idle" });
+  const [step, setStep] = useState<Step>({ kind: "loading" });
   const [file, setFile] = useState<File | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const elapsed = useElapsed(step.kind === "polling");
+
+  // On mount: check if the user already has a script
+  useEffect(() => {
+    getCurrentScript().then((script) => {
+      if (!script) { setStep({ kind: "idle" }); return; }
+      if (script.status === "ready") {
+        setStep({ kind: "picking", scriptId: script.id, characters: script.characters });
+      } else if (script.status === "queued" || script.status === "parsing") {
+        startPolling(script.id);
+      } else if (script.status === "failed") {
+        setStep({ kind: "error", message: "Previous parse failed. Upload a new script." });
+      } else {
+        setStep({ kind: "idle" });
+      }
+    }).catch(() => setStep({ kind: "idle" }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function stopPolling() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
   }
 
-  async function startPolling(scriptId: string) {
+  function startPolling(scriptId: string) {
     setStep({ kind: "polling", scriptId, status: "queued" });
     pollRef.current = setInterval(async () => {
       try {
         const s = await getScriptStatus(scriptId);
         if (s.status === "ready") {
           stopPolling();
-          // Fetch full script for character list
-          const { getCurrentScript } = await import("@/lib/api");
           const script = await getCurrentScript();
           if (!script) { setStep({ kind: "error", message: "Script not found after parsing." }); return; }
           setStep({ kind: "picking", scriptId, characters: script.characters });
@@ -42,6 +70,7 @@ export default function UploadPanel({ onCharacterSelected }: Props) {
           stopPolling();
           setStep({ kind: "error", message: s.parse_error ?? "Parsing failed." });
         } else {
+          setHint(s.progress_hint ?? null);
           setStep({ kind: "polling", scriptId, status: s.status });
         }
       } catch (err) {
@@ -57,10 +86,18 @@ export default function UploadPanel({ onCharacterSelected }: Props) {
     setStep({ kind: "uploading" });
     try {
       const { script_id } = await uploadScript(file);
-      await startPolling(script_id);
+      startPolling(script_id);
     } catch (err) {
       setStep({ kind: "error", message: String(err) });
     }
+  }
+
+  if (step.kind === "loading") {
+    return (
+      <div className="text-center py-4">
+        <div className="animate-spin h-6 w-6 border-4 border-blue-500 border-t-transparent rounded-full mx-auto" />
+      </div>
+    );
   }
 
   if (step.kind === "picking") {
@@ -80,15 +117,27 @@ export default function UploadPanel({ onCharacterSelected }: Props) {
             </li>
           ))}
         </ul>
+        <button
+          onClick={() => setStep({ kind: "idle" })}
+          className="text-xs text-gray-400 hover:text-gray-600 hover:underline"
+        >
+          Upload a different script
+        </button>
       </div>
     );
   }
 
   if (step.kind === "polling") {
+    const mins = Math.floor(elapsed / 60);
+    const secs = elapsed % 60;
+    const elapsed_str = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
     return (
-      <div className="text-center space-y-2">
+      <div className="text-center space-y-3">
         <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto" />
-        <p className="text-sm text-gray-600 capitalize">{step.status}…</p>
+        <p className="text-sm text-gray-700 font-medium">
+          {hint ?? "Parsing your script…"}
+        </p>
+        <p className="text-xs text-gray-400">{elapsed_str} elapsed</p>
       </div>
     );
   }
@@ -101,7 +150,7 @@ export default function UploadPanel({ onCharacterSelected }: Props) {
           onClick={() => setStep({ kind: "idle" })}
           className="text-sm text-blue-600 hover:underline"
         >
-          Try again
+          Upload a new script
         </button>
       </div>
     );

@@ -63,6 +63,21 @@ User picks their character and rehearses.
 
 ## Post-MVP (not yet scheduled — `TODO(post-mvp)`)
 
+### Voice upgrade — Pipecat integration
+
+Replace or augment Web Speech API with a Pipecat-based voice pipeline for:
+- **Accurate word-level STT** — Deepgram or Whisper instead of Web Speech API
+- **Expressive TTS** — Kokoro / Cartesia / ElevenLabs instead of browser voices
+- **Character "consciousness"** — LLM-driven delivery with emotion, pacing, personality
+
+Architectural impact: rehearsal session moves from fully browser-side to a real-time
+WebSocket session through the backend. Render free tier won't handle this — requires
+Fly.io or a dedicated instance. Design as an opt-in premium mode with a `VoiceClient`
+interface that abstracts over Web Speech API (free) vs Pipecat (paid/premium).
+
+Free self-hosted stack: Deepgram free tier (STT) + XTTS/Kokoro (TTS, needs GPU) + Groq (LLM).
+Paid but easy stack: Deepgram + Cartesia + Groq.
+
 - **Script library** — multiple scripts per user, switch between them
 - **Share-link** — read-only view a coach can open
 - **High-quality TTS** — ElevenLabs integration for premium voices

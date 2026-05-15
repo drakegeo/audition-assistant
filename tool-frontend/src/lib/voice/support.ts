@@ -22,6 +22,16 @@ export function loadVoices(): Promise<SpeechSynthesisVoice[]> {
   });
 }
 
+/** Score a voice by quality. Higher = better. */
+function voiceQuality(v: SpeechSynthesisVoice): number {
+  const n = v.name.toLowerCase();
+  if (n.includes("natural") || n.includes("neural")) return 4;
+  if (n.includes("premium") || n.includes("enhanced")) return 3;
+  if (!v.localService) return 2; // online/cloud voices are generally higher quality
+  if (n.includes("google") || n.includes("microsoft")) return 1;
+  return 0;
+}
+
 export function assignVoices(
   characters: string[],
   allVoices: SpeechSynthesisVoice[]
@@ -30,5 +40,7 @@ export function assignVoices(
     v.lang.toLowerCase().startsWith("en")
   );
   const pool = english.length > 0 ? english : allVoices;
-  return new Map(characters.map((name, i) => [name, pool[i % pool.length]]));
+  // Sort best voices first so character 0 gets the highest-quality voice
+  const ranked = [...pool].sort((a, b) => voiceQuality(b) - voiceQuality(a));
+  return new Map(characters.map((name, i) => [name, ranked[i % ranked.length]]));
 }

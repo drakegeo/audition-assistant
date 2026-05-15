@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from ..llm.factory import get_llm_client
@@ -21,41 +22,35 @@ async def run_parse_worker(script_id: str, user_id: str) -> None:
     try:
         await db.update_script_status(script_id, "parsing")
 
-        # 1. Download PDF from Storage
         script_row = await _get_script_row(script_id, user_id)
         if script_row is None:
-            # Script was deleted before the worker ran (user uploaded a replacement)
             logger.warning("parse_worker_script_missing", extra={"script_id": script_id})
             return
+
         pdf_bytes = await pdf_storage.download_pdf(script_row["storage_path"])
-
-        # 2. Extract text (raises ValueError for scanned PDFs)
         text = extract_text(pdf_bytes)
+        word_count = len(text.split())
+        logger.info("pdf_extracted", extra={"script_id": script_id, "words": word_count})
 
-        # 3. Call LLM with retry
         llm = get_llm_client()
         parsed = await _parse_with_retry(text, llm)
 
-        # 4. Write to DB (characters + lines + mark ready)
         await db.write_parsed_script(script_id, parsed)
         logger.info("parse_worker_done", extra={"script_id": script_id})
 
     except Exception as exc:
         error_msg = str(exc)
-        logger.error(
-            "parse_worker_failed",
-            extra={"script_id": script_id, "error": error_msg},
-            exc_info=True,
-        )
+        logger.error("parse_worker_failed",
+                     extra={"script_id": script_id, "error": error_msg}, exc_info=True)
         try:
             await db.update_script_status(script_id, "failed", parse_error=error_msg)
         except Exception:
-            logger.error("parse_worker_status_update_failed", extra={"script_id": script_id})
+            logger.error("parse_worker_status_update_failed",
+                         extra={"script_id": script_id})
 
 
-async def _get_script_row(script_id: str, user_id: str) -> dict | None:
+async def _get_script_row(script_id: str, user_id: str) -> dict | None:  # type: ignore[type-arg]
     from ..supabase_client import get_client
-    import asyncio
 
     client = get_client()
     resp = await asyncio.to_thread(
@@ -70,9 +65,6 @@ async def _get_script_row(script_id: str, user_id: str) -> dict | None:
 
 
 async def _parse_with_retry(text: str, llm: object) -> dict:  # type: ignore[type-arg]
-    import asyncio
-    from .parser import parse_script
-
     last_exc: Exception | None = None
     for attempt in range(1, _LLM_RETRY_ATTEMPTS + 1):
         try:
@@ -80,9 +72,7 @@ async def _parse_with_retry(text: str, llm: object) -> dict:  # type: ignore[typ
         except Exception as exc:
             last_exc = exc
             if attempt < _LLM_RETRY_ATTEMPTS:
-                logger.warning(
-                    "parse_worker_llm_retry",
-                    extra={"attempt": attempt, "error": str(exc)},
-                )
+                logger.warning("parse_worker_llm_retry",
+                               extra={"attempt": attempt, "error": str(exc)})
                 await asyncio.sleep(_LLM_RETRY_DELAY_S)
     raise last_exc  # type: ignore[misc]

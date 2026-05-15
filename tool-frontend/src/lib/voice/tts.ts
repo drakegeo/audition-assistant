@@ -23,7 +23,9 @@ function chunkText(text: string): string[] {
 export function speakLine(
   text: string,
   voice: SpeechSynthesisVoice,
-  onEnd: () => void
+  onEnd: () => void,
+  rate = 0.95,
+  pitch = 1.0,
 ): () => void {
   const chunks = chunkText(text);
   let chunkIndex = 0;
@@ -36,6 +38,8 @@ export function speakLine(
     }
     const utterance = new SpeechSynthesisUtterance(chunks[chunkIndex++]);
     utterance.voice = voice;
+    utterance.rate = rate;
+    utterance.pitch = pitch;
     utterance.onend = speakNext;
     window.speechSynthesis.speak(utterance);
   }

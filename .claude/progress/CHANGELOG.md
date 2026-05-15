@@ -12,6 +12,28 @@ Format:
 
 ---
 
+## 2026-05-15 — In-line word highlighting + scene list
+
+- **Word highlighting in the line:** Removed separate transcript bar. Words the user speaks now highlight blue (`<mark>`) directly inside their dialogue line as STT recognises them. Uses set-based token matching (normalise → lowercase, strip punctuation). Clears on line advance.
+- **Scene list:** "Scenes ▾" button in controls bar opens a dropdown panel listing all `scene_header` lines. Clicking a scene scrolls the script to it. Panel closes on selection or on the × button. Works before and during rehearsal.
+- **LineItem refactor:** Added `transcript` prop; word highlighting only active when `isCurrent && isUserLine && transcript !== ""`.
+- TypeScript: 0 errors. 21 backend tests passing.
+
+---
+
+## 2026-05-14 — Transcript display, compact JSON parser, loading improvements
+
+- **Transcript display:** `RehearsalView` now shows a live transcript strip (blue bar below controls) while in LISTENING state. Words appear as STT recognises them, cleared when the user advances. Answers user's "mark the words I say" request.
+- **Compact JSON format:** Rewrote `src/ingestion/parser.py` to output compact array lines `[seq, "d"|"s"|"h", char, text]` instead of verbose objects. Reduces output tokens ~30–40% (from ~46k to ~28–32k estimated for a 39-page play). `_expand()` converts to full format before DB write. Both `_COMPACT_SCHEMA` and `_SCHEMA` kept — compact for LLM validation, full for `_validate()` and tests.
+- **Loading bar with elapsed time:** `UploadPanel` now shows the `progress_hint` message from the status API + a live elapsed-time counter (e.g. "1m 23s elapsed"). Progress hint computed from status in the endpoint — no DB column needed.
+- **CORS fix:** Added `http://127.0.0.1:3000` to default allowed origins. `allow_headers=["*"]`. Debugged origin mismatch: browser was sending `Origin: http://10.231.27.24:3000` (network IP, not localhost). Fix: use `http://localhost:3000`.
+- **Returning user flow:** `UploadPanel` now checks for existing script on mount — returns users land on character picker directly, no re-upload needed. "Upload a different script" link available.
+- 21 tests passing. TypeScript: 0 errors.
+
+**Next step:** upload PDF through web app and confirm full rehearsal flow works end-to-end with new compact parser. Then deploy to Render + Vercel.
+
+---
+
 ## 2026-05-14 — Local debugging complete; backend ready for end-to-end web test
 
 - Fixed `load_dotenv()` missing from `src/api/main.py` — backend wasn't reading `.env` at all, causing every auth call to fail with `KeyError: 'SUPABASE_URL'`.
