@@ -12,6 +12,26 @@ Format:
 
 ---
 
+## 2026-05-15 — Deployed to Render + Vercel; production live
+
+- Backend deployed to Render (Python web service, `render.yaml` auto-detected).
+  `GET /health` returns `{"status":"ok"}` on live URL.
+- Frontend deployed to Vercel (Next.js, root dir `tool-frontend`).
+  Live at `https://audition-assistant.vercel.app`.
+- Fixed Vercel build error: wrapped `useSearchParams()` in `<Suspense>` in
+  `src/app/auth/callback/page.tsx` (Next.js 15 requirement).
+- Fixed GitHub account mismatch that blocked Vercel deployment.
+- Supabase configured for production:
+  - Site URL updated to Vercel URL
+  - Redirect URLs: added `https://audition-assistant.vercel.app/auth/callback`
+    and `http://localhost:3000/auth/callback`
+- Render `ALLOWED_ORIGINS` set to Vercel URL + `http://localhost:3000`.
+
+**Next:** verify full flow on live URLs (sign up → upload → parse → rehearse),
+then move to Phase 3 polish items.
+
+---
+
 ## 2026-05-15 — In-line word highlighting + scene list
 
 - **Word highlighting in the line:** Removed separate transcript bar. Words the user speaks now highlight blue (`<mark>`) directly inside their dialogue line as STT recognises them. Uses set-based token matching (normalise → lowercase, strip punctuation). Clears on line advance.

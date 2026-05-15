@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import type {
   Script,
+  ScriptListItem,
   ScriptStatusResponse,
   ScriptUploadResponse,
 } from "@/types/script";
@@ -34,6 +35,27 @@ async function handleResponse<T>(res: Response): Promise<T> {
     // non-JSON error body — keep defaults
   }
   throw new ApiError(res.status, code, detail);
+}
+
+export async function listScripts(): Promise<ScriptListItem[]> {
+  const res = await fetch(`${BASE}/scripts`, { headers: await authHeaders() });
+  return handleResponse<ScriptListItem[]>(res);
+}
+
+export async function getScript(scriptId: string): Promise<Script> {
+  const res = await fetch(`${BASE}/scripts/${scriptId}`, {
+    headers: await authHeaders(),
+  });
+  return handleResponse<Script>(res);
+}
+
+export async function renameScript(scriptId: string, title: string): Promise<void> {
+  const res = await fetch(`${BASE}/scripts/${scriptId}`, {
+    method: "PATCH",
+    headers: { ...(await authHeaders()), "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  return handleResponse<void>(res);
 }
 
 export async function uploadScript(

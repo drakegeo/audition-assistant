@@ -48,9 +48,10 @@ User picks their character and rehearses.
 ## Phase 3 — Polish for MVP launch ← current
 
 **Order of work:**
-1. **Local end-to-end verification first** — sign up → upload PDF → parse → character pick → rehearse, all on localhost. Fix anything broken before touching deployment.
-2. **Deploy** — backend to Render, frontend to Vercel. Set env vars in each dashboard. Verify `/health` and the full flow on live URLs.
-3. **Polish** — the items below, after the app is confirmed working on live URLs.
+1. ✅ **Local end-to-end verification** — done.
+2. ✅ **Deploy** — backend on Render, frontend on Vercel. Both live.
+3. **Verify live flow** — sign up on production → upload PDF → parse → rehearse. Fix anything broken.
+4. **Polish** — the items below.
 
 **Deliverables:**
 - ✅ Firefox STT warning already shown (basic) — improve UI, offer manual-advance mode

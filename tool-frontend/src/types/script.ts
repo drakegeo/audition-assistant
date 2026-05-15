@@ -27,6 +27,15 @@ export interface Script {
   lines: Line[];
 }
 
+export interface ScriptListItem {
+  id: string;
+  title: string;
+  status: ScriptStatus;
+  created_at: string;
+  parsed_at: string | null;
+  parse_error: string | null;
+}
+
 export interface ScriptUploadResponse {
   script_id: string;
   status: string;

@@ -70,16 +70,19 @@ def test_get_current_returns_404_when_none(client, auth_headers) -> None:
 
 
 def test_get_current_returns_script_when_ready(client, auth_headers) -> None:
+    fake_list = [{"id": MOCK_SCRIPT_ID, "title": "Hamlet", "status": "ready",
+                  "created_at": "2026-05-14T10:00:00Z", "parsed_at": "2026-05-14T10:00:42Z",
+                  "parse_error": None}]
     fake_script = {
-        "id": MOCK_SCRIPT_ID,
-        "title": "Hamlet",
-        "status": "ready",
-        "created_at": "2026-05-14T10:00:00Z",
-        "parsed_at": "2026-05-14T10:00:42Z",
+        "id": MOCK_SCRIPT_ID, "title": "Hamlet", "status": "ready",
+        "created_at": "2026-05-14T10:00:00Z", "parsed_at": "2026-05-14T10:00:42Z",
         "characters": [{"id": "c1", "name": "HAMLET", "line_count": 5, "display_order": 0}],
         "lines": [{"id": "l1", "sequence": 1, "kind": "dialogue", "character_id": "c1", "text": "To be."}],
     }
-    with patch("src.api.scripts.db.get_full_script_for_user", new_callable=AsyncMock, return_value=fake_script):
+    with (
+        patch("src.api.scripts.db.list_scripts_for_user", new_callable=AsyncMock, return_value=fake_list),
+        patch("src.api.scripts.db.get_script_by_id_for_user", new_callable=AsyncMock, return_value=fake_script),
+    ):
         resp = client.get("/scripts/current", headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["title"] == "Hamlet"

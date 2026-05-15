@@ -2,21 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { getCurrentScript } from "@/lib/api";
+import { getScript } from "@/lib/api";
 import { detectVoiceSupport } from "@/lib/voice/support";
 import RehearsalView from "@/components/RehearsalView";
 import AuthGuard from "@/components/AuthGuard";
 import type { CueMode, Script } from "@/types/script";
 
-export default function RehearsePage() {
+export default async function RehearsePage({ params }: { params: Promise<{ scriptId: string }> }) {
+  const { scriptId } = await params;
   return (
     <AuthGuard>
-      <RehearsalPageInner />
+      <RehearsalPageInner scriptId={scriptId} />
     </AuthGuard>
   );
 }
 
-function RehearsalPageInner() {
+function RehearsalPageInner({ scriptId }: { scriptId: string }) {
   const searchParams = useSearchParams();
   const characterId = searchParams.get("character") ?? "";
   const [script, setScript] = useState<Script | null>(null);
@@ -31,11 +32,8 @@ function RehearsalPageInner() {
   }, []);
 
   useEffect(() => {
-    getCurrentScript()
-      .then((s) => {
-        if (!s) { setError("No script found. Please upload one first."); return; }
-        setScript(s);
-      })
+    getScript(scriptId)
+      .then((s) => setScript(s))
       .catch((e) => setError(String(e)));
   }, []);
 

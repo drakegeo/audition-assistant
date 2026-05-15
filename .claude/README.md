@@ -21,7 +21,7 @@ The product reference is [ScenePartner](https://scenepartner.ai). We are not cop
 
 ## Current status
 
-**Phase: 3 — Polish.** Core MVP complete. Next step: verify end-to-end locally (sign up → upload PDF → rehearse), then deploy backend to Render and frontend to Vercel. Polish items follow.
+**Phase: 3 — Polish.** App live on Render + Vercel. Next: verify full flow on production URLs, then polish (cue mode picker, voice quality, quota, analytics).
 
 ## Hard rules
 
