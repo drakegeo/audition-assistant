@@ -23,6 +23,7 @@ export default function SetupClient({ scriptId }: { scriptId: string }) {
   const [kokoroReady, setKokoroReady] = useState(false);
   const [voiceMap, setVoiceMap] = useState<Map<string, KokoroVoice>>(new Map());
   const [previewing, setPreviewing] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const cancelRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -51,17 +52,23 @@ export default function SetupClient({ scriptId }: { scriptId: string }) {
 
   async function handlePreview(charName: string) {
     cancelRef.current?.();
+    setPreviewError(null);
     setPreviewing(charName);
-    if (!kokoroReady) {
-      await loadKokoro().catch(() => {});
-      setKokoroReady(true);
-    }
-    const voice = voiceMap.get(charName) ?? KOKORO_VOICES[0];
-    const cancel = await speakLineKokoro(`Hi, I'm ${charName}.`, voice, () => {
+    try {
+      if (!kokoroReady) {
+        await loadKokoro();
+        setKokoroReady(true);
+      }
+      const voice = voiceMap.get(charName) ?? KOKORO_VOICES[0];
+      const cancel = await speakLineKokoro(`Hi, I'm ${charName}.`, voice, () => {
+        setPreviewing(null);
+        cancelRef.current = null;
+      }, true);
+      cancelRef.current = cancel;
+    } catch (e) {
       setPreviewing(null);
-      cancelRef.current = null;
-    });
-    cancelRef.current = cancel;
+      setPreviewError(String(e));
+    }
   }
 
   function handleStart() {
@@ -149,6 +156,10 @@ export default function SetupClient({ scriptId }: { scriptId: string }) {
             })}
           </ul>
         </div>
+
+        {previewError && (
+          <p className="text-xs text-red-500 text-center -mt-2">{previewError}</p>
+        )}
 
         <button
           onClick={handleStart}

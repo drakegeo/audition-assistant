@@ -32,32 +32,38 @@ export function isKokoroReady(): boolean {
   return _tts !== null;
 }
 
-function playPCM(audio: Float32Array<ArrayBufferLike>, sampleRate: number, onEnd: () => void): () => void {
-  const ctx = new AudioContext({ sampleRate });
-  const pcm = new Float32Array(audio); // copy into plain ArrayBuffer for copyToChannel
-  const buf = ctx.createBuffer(1, pcm.length, sampleRate);
-  buf.copyToChannel(pcm, 0);
-  const src = ctx.createBufferSource();
-  src.buffer = buf;
-  src.connect(ctx.destination);
-  src.onended = () => { void ctx.close(); onEnd(); };
-  void ctx.resume().then(() => src.start());
-  return () => {
-    try { src.stop(); } catch { /* already stopped */ }
-    void ctx.close();
-  };
-}
-
 export async function speakLineKokoro(
   text: string,
   voice: KokoroVoice,
   onEnd: () => void,
+  throwOnError = false,
 ): Promise<() => void> {
-  if (!_tts) { onEnd(); return () => {}; }
+  if (!_tts) {
+    if (throwOnError) throw new Error("Kokoro not loaded");
+    onEnd();
+    return () => {};
+  }
+  // Create and resume AudioContext synchronously here, before the async generation.
+  // This keeps it inside the user-gesture call stack so Chrome doesn't suspend it.
+  const ctx = new AudioContext();
+  void ctx.resume();
   try {
     const result: { audio: Float32Array<ArrayBufferLike>; sampling_rate: number } = await _tts.generate(text, { voice });
-    return playPCM(result.audio, result.sampling_rate, onEnd);
-  } catch {
+    const pcm = new Float32Array(result.audio);
+    const buf = ctx.createBuffer(1, pcm.length, result.sampling_rate);
+    buf.copyToChannel(pcm, 0);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.onended = () => { void ctx.close(); onEnd(); };
+    src.start();
+    return () => {
+      try { src.stop(); } catch { /* already stopped */ }
+      void ctx.close();
+    };
+  } catch (e) {
+    void ctx.close();
+    if (throwOnError) throw e;
     onEnd();
     return () => {};
   }
