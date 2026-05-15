@@ -114,8 +114,27 @@ User picks their character and rehearses.
 - Azure / Google Neural TTS: Cheapest ($0.004–0.016/1k), 100+ languages, but "corporate" sound — not expressive enough for actors.
 - Parler TTS + LLM: Best emotional range, but requires a dedicated GPU server ($5–20/mo on Fly.io) and a real-time WebSocket pipeline. Post-MVP if the premium tier proves out.
 
-**STT upgrade (any tier):** Deepgram for word-level accuracy + reliable highlighting.
-Free tier ~45 min/month. Replaces Web Speech API STT only.
+**Hidden costs that don't go away even with caching:**
+- **Storage:** Each cached line = ~20–50 KB Opus file. A fully cached play (4–6 characters, 1k–2k lines each) = 200–600 MB. At audition-side scale (~100 non-user lines) = ~5 MB per script. Supabase Storage: $0.021/GB stored + $0.09/GB egress. Manageable at MVP, grows linearly with library.
+- **STT: currently $0.** We use Web Speech API (free, browser-native). Only add paid STT (Deepgram/Whisper ~$0.006–0.025/min) if users report accuracy issues. Do not pay for STT until there is a proven need.
+- **Bandwidth:** Caching reduces generation cost, not delivery cost. Every audio playback egresses bytes. Heavy users replaying cached audio many times still costs egress. Minor at MVP scale.
+- **Voice picker vs cache:** Each voice selection = separate cache entry. Previewing 3 voices before picking = 3× generation cost for preview line. Small at MVP, worth knowing.
+- **Cache invalidation:** OpenAI deprecates or improves a voice → cached files become stale. Version-pin the cache key (include model version) so old files remain valid. Regenerate only when you choose to upgrade.
+
+**Revised P&L at 500 paying users (with caching, Web Speech API STT):**
+- Revenue: 500 × €15 = ~$8,100/month
+- TTS (OpenAI TTS HD, 50% cache hit, 1.5 min new content/session): ~$340/month
+- STT: $0 (Web Speech API)
+- Storage + bandwidth: ~$75/month
+- Infrastructure (Render + Supabase paid): ~$100/month
+- **Total cost: ~$515/month → ~94% gross margin**
+- At 2,000 users: ~$2,100/month cost, ~$32,000 revenue → profitable side business
+
+**Key business metric to track:** cache hit rate. Target >60%. If it drops below 40%, margins compress significantly. Measure as: (sessions with all-cached audio) / (total sessions).
+
+**Usage cap decision:** Do NOT cap rehearsal sessions. Unlimited repetition is the core value prop. Cap new script uploads per month (3 on free, 10 on premium) — this bounds first-generation cost to ~$1.40/user/month worst case.
+
+**STT upgrade (if needed later):** Deepgram Nova for word-level accuracy. Free tier ~45 min/month. Add only if Web Speech API accuracy proves insufficient for users.
 
 **Architecture:** Abstract behind a `TTSClient` interface (same pattern as `LLMClient`).
 Free users get Kokoro WASM; premium users get OpenAI TTS HD with Supabase Storage cache.
