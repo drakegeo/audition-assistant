@@ -3,15 +3,37 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getScript } from "@/lib/api";
-import {
-  loadKokoro,
-  speakLineKokoro,
-  assignKokoroVoices,
-  KOKORO_VOICES,
-  VOICE_LABELS,
-  type KokoroVoice,
-} from "@/lib/voice/kokoro";
+import { assignKokoroVoices, KOKORO_VOICES, VOICE_LABELS, type KokoroVoice } from "@/lib/voice/kokoro";
 import type { Script } from "@/types/script";
+
+// Maps each Kokoro voice to Web Speech params so the preview approximates the accent/tone.
+const VOICE_PREVIEW_PARAMS: Record<KokoroVoice, { lang: string; rate: number; pitch: number }> = {
+  af_heart:   { lang: "en-US", rate: 0.95, pitch: 1.15 },
+  am_adam:    { lang: "en-US", rate: 1.00, pitch: 0.90 },
+  bf_emma:    { lang: "en-GB", rate: 0.95, pitch: 1.10 },
+  bm_george:  { lang: "en-GB", rate: 0.90, pitch: 0.80 },
+  af_bella:   { lang: "en-US", rate: 1.05, pitch: 1.20 },
+  am_michael: { lang: "en-US", rate: 0.90, pitch: 0.75 },
+  af_sarah:   { lang: "en-US", rate: 0.92, pitch: 1.05 },
+  bm_lewis:   { lang: "en-GB", rate: 0.92, pitch: 0.85 },
+};
+
+function previewVoice(charName: string, voice: KokoroVoice, onEnd: () => void): () => void {
+  if (typeof window === "undefined" || !window.speechSynthesis) { onEnd(); return () => {}; }
+  window.speechSynthesis.cancel();
+  const { lang, rate, pitch } = VOICE_PREVIEW_PARAMS[voice];
+  const utter = new SpeechSynthesisUtterance(`Hi, I'm ${charName}.`);
+  utter.lang = lang;
+  utter.rate = rate;
+  utter.pitch = pitch;
+  // prefer a voice matching the target locale
+  const match = window.speechSynthesis.getVoices().find((v) => v.lang.startsWith(lang));
+  if (match) utter.voice = match;
+  utter.onend = onEnd;
+  utter.onerror = () => onEnd();
+  window.speechSynthesis.speak(utter);
+  return () => window.speechSynthesis.cancel();
+}
 
 export default function SetupClient({ scriptId }: { scriptId: string }) {
   const router = useRouter();
@@ -20,10 +42,8 @@ export default function SetupClient({ scriptId }: { scriptId: string }) {
 
   const [script, setScript] = useState<Script | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [kokoroReady, setKokoroReady] = useState(false);
   const [voiceMap, setVoiceMap] = useState<Map<string, KokoroVoice>>(new Map());
   const [previewing, setPreviewing] = useState<string | null>(null);
-  const [previewError, setPreviewError] = useState<string | null>(null);
   const cancelRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -38,37 +58,20 @@ export default function SetupClient({ scriptId }: { scriptId: string }) {
       .catch((e) => setError(String(e)));
   }, [scriptId, characterId]);
 
-  useEffect(() => {
-    loadKokoro()
-      .then(() => setKokoroReady(true))
-      .catch(() => {});
-  }, []);
-
   useEffect(() => () => { cancelRef.current?.(); }, []);
 
   function handleVoiceChange(charName: string, voice: KokoroVoice) {
     setVoiceMap((prev) => new Map(prev).set(charName, voice));
   }
 
-  async function handlePreview(charName: string) {
+  function handlePreview(charName: string) {
     cancelRef.current?.();
-    setPreviewError(null);
     setPreviewing(charName);
-    try {
-      if (!kokoroReady) {
-        await loadKokoro();
-        setKokoroReady(true);
-      }
-      const voice = voiceMap.get(charName) ?? KOKORO_VOICES[0];
-      const cancel = await speakLineKokoro(`Hi, I'm ${charName}.`, voice, () => {
-        setPreviewing(null);
-        cancelRef.current = null;
-      }, true);
-      cancelRef.current = cancel;
-    } catch (e) {
+    const voice = voiceMap.get(charName) ?? KOKORO_VOICES[0];
+    cancelRef.current = previewVoice(charName, voice, () => {
       setPreviewing(null);
-      setPreviewError(String(e));
-    }
+      cancelRef.current = null;
+    });
   }
 
   function handleStart() {
@@ -121,11 +124,6 @@ export default function SetupClient({ scriptId }: { scriptId: string }) {
           <div className="px-4 py-3 border-b bg-gray-50">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Other characters</p>
           </div>
-
-          {!kokoroReady && (
-            <p className="text-xs text-gray-400 px-4 py-2 animate-pulse">Loading voice model…</p>
-          )}
-
           <ul className="divide-y">
             {otherChars.map((char) => {
               const current = voiceMap.get(char.name) ?? KOKORO_VOICES[0];
@@ -144,7 +142,7 @@ export default function SetupClient({ scriptId }: { scriptId: string }) {
                     ))}
                   </select>
                   <button
-                    onClick={() => { void handlePreview(char.name); }}
+                    onClick={() => handlePreview(char.name)}
                     disabled={previewing !== null}
                     className="text-blue-500 hover:text-blue-700 disabled:text-gray-300 text-sm px-1 w-6 text-center"
                     aria-label={`Preview ${char.name}`}
@@ -156,10 +154,6 @@ export default function SetupClient({ scriptId }: { scriptId: string }) {
             })}
           </ul>
         </div>
-
-        {previewError && (
-          <p className="text-xs text-red-500 text-center -mt-2">{previewError}</p>
-        )}
 
         <button
           onClick={handleStart}
