@@ -1,4 +1,5 @@
 import logging
+import os
 import uuid
 from pathlib import Path
 
@@ -21,8 +22,20 @@ _MAX_BYTES = 10 * 1024 * 1024
 _PDF_MAGIC = b"%PDF-"
 
 
+_ADMIN_IDS: set[str] = {
+    uid.strip()
+    for uid in os.getenv("ADMIN_USER_IDS", "").split(",")
+    if uid.strip()
+}
+
+
 async def _check_quota(user_id: str) -> None:
-    """Enforce free plan: max 3 total script uploads per user (lifetime)."""
+    """Enforce free plan: max 3 total script uploads per user (lifetime).
+
+    Users listed in ADMIN_USER_IDS env var bypass the quota entirely.
+    """
+    if user_id in _ADMIN_IDS:
+        return
     count = await db.count_total_uploads(user_id)
     if count >= db.MAX_FREE_UPLOADS:
         raise HTTPException(
