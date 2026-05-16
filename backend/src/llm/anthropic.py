@@ -1,4 +1,3 @@
-import base64
 import json
 import os
 
@@ -43,37 +42,3 @@ class AnthropicClient:
             raw = raw.strip()
 
         return json.loads(raw)  # type: ignore[no-any-return]
-
-    async def ocr_pages(self, images: list[bytes]) -> str:
-        """Extract text from PNG page images using Claude Vision.
-
-        Accepts up to _OCR_BATCH_SIZE pages as raw PNG bytes and returns
-        the concatenated plain text, preserving script layout.
-        """
-        content: list[dict] = []  # type: ignore[type-arg]
-        for img_bytes in images:
-            content.append({
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/png",
-                    "data": base64.standard_b64encode(img_bytes).decode(),
-                },
-            })
-        content.append({
-            "type": "text",
-            "text": (
-                "These are pages from a theatrical script scanned as images. "
-                "Extract all text exactly as it appears, preserving the structure: "
-                "character names (usually ALL CAPS before their line), "
-                "stage directions (in parentheses or italics), "
-                "scene headers, and dialogue. "
-                "Output only the extracted text — no commentary, no markdown."
-            ),
-        })
-        message = await self._client.messages.create(
-            model=self._model,
-            max_tokens=8096,
-            messages=[{"role": "user", "content": content}],
-        )
-        return message.content[0].text  # type: ignore[union-attr]

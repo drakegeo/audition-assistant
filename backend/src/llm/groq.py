@@ -1,7 +1,10 @@
+import base64
 import json
 import os
 
 from groq import AsyncGroq
+
+_OCR_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 
 class GroqClient:
@@ -39,3 +42,31 @@ class GroqClient:
                 text = text[4:]
             text = text.strip()
         return json.loads(text)  # type: ignore[no-any-return]
+
+    async def ocr_page(self, image_jpeg: bytes) -> str:
+        """Extract text from a single JPEG page image using Llama 4 Scout vision."""
+        b64 = base64.standard_b64encode(image_jpeg).decode()
+        response = await self._client.chat.completions.create(
+            model=_OCR_MODEL,
+            max_tokens=4096,
+            temperature=0,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+                    },
+                    {
+                        "type": "text",
+                        "text": (
+                            "Transcribe every word of text from this script page image. "
+                            "Preserve the structure: character names (ALL CAPS), "
+                            "dialogue, stage directions, and scene headers. "
+                            "Output only the transcribed text, nothing else."
+                        ),
+                    },
+                ],
+            }],
+        )
+        return response.choices[0].message.content or ""
