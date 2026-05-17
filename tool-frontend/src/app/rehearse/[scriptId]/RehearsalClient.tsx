@@ -31,7 +31,20 @@ export default function RehearsalClient({ scriptId }: { scriptId: string }) {
         const otherChars = s.characters.filter((c) => c.id !== characterId);
         if (otherChars.length === 0) { setTtsReady(true); return; }
 
-        // Load saved voice prefs (charId → voiceId). Ignore old format (gender strings).
+        // Fast path: use URLs saved by the setup page (avoids a second API call)
+        const cachedUrls = sessionStorage.getItem(`tts-urls-${scriptId}`);
+        if (cachedUrls) {
+          try {
+            const urls = JSON.parse(cachedUrls) as Record<string, string>;
+            if (Object.keys(urls).length > 0) {
+              setAudioUrls(urls);
+              setTtsReady(true);
+              return;
+            }
+          } catch { /* fall through */ }
+        }
+
+        // Slow path: setup wasn't just done (direct navigation / return visit)
         let savedPrefs: Record<string, string> = {};
         const saved = localStorage.getItem(`voice-prefs-${scriptId}`);
         if (saved) {
@@ -56,7 +69,7 @@ export default function RehearsalClient({ scriptId }: { scriptId: string }) {
           const result = await prepareTTS(scriptId, voiceMap);
           setAudioUrls(result.urls);
         } catch (e) {
-          console.warn("TTS URL fetch failed, falling back to browser voices", e);
+          console.warn("TTS prepare failed on rehearsal load, falling back to browser voices", e);
         } finally {
           setTtsReady(true);
         }

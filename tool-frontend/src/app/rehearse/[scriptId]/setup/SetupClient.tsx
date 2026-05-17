@@ -114,6 +114,7 @@ export default function SetupClient({ scriptId }: { scriptId: string }) {
     setPreparing(true);
     try {
       let result = await prepareTTS(scriptId, ttsVoiceMap);
+      sessionStorage.setItem(`tts-urls-${scriptId}`, JSON.stringify(result.urls));
       if (result.failed > 0) {
         const retry = await prepareTTS(scriptId, ttsVoiceMap);
         result = {
@@ -122,6 +123,7 @@ export default function SetupClient({ scriptId }: { scriptId: string }) {
           cached: result.cached + retry.cached,
           failed: retry.failed,
         };
+        sessionStorage.setItem(`tts-urls-${scriptId}`, JSON.stringify(result.urls));
       }
       setPrepStats({ generated: result.generated, cached: result.cached, failed: result.failed });
       setPrepared(true);
