@@ -1,22 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { getScript, prepareTTS } from "@/lib/api";
-import { assignDefaultVoiceIds, getDefaultVoiceId } from "@/lib/voice/edge-tts";
+import { useRouter, useSearchParams } from "next/navigation";
+import { getScript } from "@/lib/api";
 import { detectVoiceSupport } from "@/lib/voice/support";
 import RehearsalView from "@/components/RehearsalView";
 import type { CueMode, Script } from "@/types/script";
 
 export default function RehearsalClient({ scriptId }: { scriptId: string }) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const characterId = searchParams.get("character") ?? "";
   const [script, setScript] = useState<Script | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cueMode] = useState<CueMode>("hybrid");
   const [sttWarning, setSttWarning] = useState(false);
-  const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
-  const [ttsReady, setTtsReady] = useState(false);
+  const [audioUrls, setAudioUrls] = useState<Record<string, string> | null>(null);
 
   useEffect(() => {
     const { stt } = detectVoiceSupport();
@@ -24,58 +23,28 @@ export default function RehearsalClient({ scriptId }: { scriptId: string }) {
   }, []);
 
   useEffect(() => {
+    // Enforce one-way flow: rehearsal is only reachable from setup.
+    // If there are no prepared URLs in sessionStorage, send the user back to setup.
+    if (!characterId) {
+      router.replace(`/rehearse/${scriptId}/setup`);
+      return;
+    }
+    const raw = sessionStorage.getItem(`tts-urls-${scriptId}`);
+    if (!raw) {
+      router.replace(`/rehearse/${scriptId}/setup`);
+      return;
+    }
+    try {
+      setAudioUrls(JSON.parse(raw) as Record<string, string>);
+    } catch {
+      router.replace(`/rehearse/${scriptId}/setup`);
+      return;
+    }
+
     getScript(scriptId)
-      .then(async (s) => {
-        setScript(s);
-        const scriptLang = (s as Script & { language?: string }).language ?? "en-US";
-        const otherChars = s.characters.filter((c) => c.id !== characterId);
-        if (otherChars.length === 0) { setTtsReady(true); return; }
-
-        // Fast path: use URLs saved by the setup page (avoids a second API call)
-        const cachedUrls = sessionStorage.getItem(`tts-urls-${scriptId}`);
-        if (cachedUrls) {
-          try {
-            const urls = JSON.parse(cachedUrls) as Record<string, string>;
-            if (Object.keys(urls).length > 0) {
-              setAudioUrls(urls);
-              setTtsReady(true);
-              return;
-            }
-          } catch { /* fall through */ }
-        }
-
-        // Slow path: setup wasn't just done (direct navigation / return visit)
-        let savedPrefs: Record<string, string> = {};
-        const saved = localStorage.getItem(`voice-prefs-${scriptId}`);
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved) as Record<string, string>;
-            const isOldFormat = Object.values(parsed).every((v) => v === "female" || v === "male");
-            if (!isOldFormat) savedPrefs = parsed;
-          } catch { /* ignore */ }
-        }
-        if (Object.keys(savedPrefs).length === 0) {
-          assignDefaultVoiceIds(otherChars, scriptLang).forEach((voiceId, charId) => {
-            savedPrefs[charId] = voiceId;
-          });
-        }
-
-        const voiceMap: Record<string, string> = {};
-        for (const char of otherChars) {
-          voiceMap[char.id] = savedPrefs[char.id] ?? getDefaultVoiceId(scriptLang, "female");
-        }
-
-        try {
-          const result = await prepareTTS(scriptId, voiceMap);
-          setAudioUrls(result.urls);
-        } catch (e) {
-          console.warn("TTS prepare failed on rehearsal load, falling back to browser voices", e);
-        } finally {
-          setTtsReady(true);
-        }
-      })
+      .then((s) => setScript(s))
       .catch((e) => setError(String(e)));
-  }, [scriptId, characterId]);
+  }, [scriptId, characterId, router]);
 
   if (error) return (
     <main className="min-h-screen flex items-center justify-center p-4">
@@ -83,15 +52,9 @@ export default function RehearsalClient({ scriptId }: { scriptId: string }) {
     </main>
   );
 
-  if (!script) return (
+  if (!script || audioUrls === null) return (
     <main className="min-h-screen flex items-center justify-center">
       <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full" />
-    </main>
-  );
-
-  if (!characterId) return (
-    <main className="min-h-screen flex items-center justify-center p-4">
-      <p className="text-sm text-gray-600">No character selected. <a href="/upload" className="text-blue-600 hover:underline">Go back</a></p>
     </main>
   );
 
@@ -111,7 +74,7 @@ export default function RehearsalClient({ scriptId }: { scriptId: string }) {
           userCharacterId={characterId}
           cueMode={cueMode}
           audioUrls={audioUrls}
-          ttsReady={ttsReady}
+          ttsReady={true}
         />
       </div>
     </main>
