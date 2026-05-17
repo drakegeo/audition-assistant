@@ -117,6 +117,7 @@ export default function SetupClient({ scriptId }: { scriptId: string }) {
       if (result.failed > 0) {
         const retry = await prepareTTS(scriptId, ttsVoiceMap);
         result = {
+          urls: { ...result.urls, ...retry.urls },
           generated: result.generated + retry.generated,
           cached: result.cached + retry.cached,
           failed: retry.failed,
