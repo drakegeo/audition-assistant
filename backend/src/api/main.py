@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .health import router as health_router
 from .scripts import router as scripts_router
+from .tts import router as tts_router
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -36,3 +37,4 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(scripts_router)
+app.include_router(tts_router)

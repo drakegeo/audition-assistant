@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { CueMode, Line, Script } from "@/types/script";
 import { speakLine, durationEstimateMs } from "@/lib/voice/tts";
-import { loadKokoro, speakLineKokoro, assignKokoroVoices, isKokoroReady, KOKORO_VOICES, VOICE_WEB_PARAMS, pickWebSpeechVoice, type KokoroVoice } from "@/lib/voice/kokoro";
 import { createSTT } from "@/lib/voice/stt";
 import { createCueDetector } from "@/lib/voice/cue";
 import { loadVoices } from "@/lib/voice/support";
@@ -107,9 +107,12 @@ interface Props {
   script: Script;
   userCharacterId: string;
   cueMode: CueMode;
+  audioUrls?: Record<string, string>;  // line_id -> signed URL from backend TTS cache
+  ttsReady?: boolean;  // true once prepareTTS has resolved (success or failure)
 }
 
-export default function RehearsalView({ script, userCharacterId, cueMode }: Props) {
+export default function RehearsalView({ script, userCharacterId, cueMode, audioUrls = {}, ttsReady = true }: Props) {
+  const router = useRouter();
   const lines = script.lines;
 
   const [state, rawDispatch] = useReducer(
@@ -119,8 +122,6 @@ export default function RehearsalView({ script, userCharacterId, cueMode }: Prop
   const dispatch = useCallback((e: SessionEvent) => rawDispatch(e), [rawDispatch]);
 
   const [allVoices, setAllVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [kokoroState, setKokoroState] = useState<"loading" | "ready" | "failed">("loading");
-  const [kokoroVoiceMap, setKokoroVoiceMap] = useState<Map<string, KokoroVoice>>(new Map());
   const [showSkipPrompt, setShowSkipPrompt] = useState(false);
   const [showScenes, setShowScenes] = useState(false);
   // confirmedWords: from final STT results — reliably spoken (solid blue)
@@ -137,28 +138,9 @@ export default function RehearsalView({ script, userCharacterId, cueMode }: Prop
   const userCharName = charMap.get(userCharacterId) ?? "";
 
   useEffect(() => {
-    const otherChars = script.characters
-      .filter((c) => c.id !== userCharacterId)
-      .map((c) => c.name);
-    const saved = localStorage.getItem(`voice-prefs-${script.id}`);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved) as Record<string, KokoroVoice>;
-        setKokoroVoiceMap(new Map(Object.entries(parsed)));
-      } catch {
-        setKokoroVoiceMap(assignKokoroVoices(otherChars));
-      }
-    } else {
-      setKokoroVoiceMap(assignKokoroVoices(otherChars));
-    }
     loadVoices().then((voices) => setAllVoices(voices));
-  }, [script, userCharacterId]);
-
-  useEffect(() => {
-    loadKokoro()
-      .then(() => setKokoroState("ready"))
-      .catch(() => setKokoroState("failed"));
   }, []);
+
 
   // Scroll current line into view
   useEffect(() => {
@@ -176,28 +158,24 @@ export default function RehearsalView({ script, userCharacterId, cueMode }: Prop
     let cancelPlayback = () => {};
     const timeoutId = setTimeout(() => dispatch({ type: "tts_ended" }), durationEstimateMs(line.text));
 
-    if (isKokoroReady()) {
-      const voiceId = kokoroVoiceMap.get(charName) ?? KOKORO_VOICES[0];
-      void (async () => {
-        if (cancelled) return;
-        cancelPlayback = await speakLineKokoro(line.text, voiceId, () => {
-          if (!cancelled) { clearTimeout(timeoutId); dispatch({ type: "tts_ended" }); }
-        });
-        if (cancelled) cancelPlayback();
-      })();
+    const cachedUrl = audioUrls[line.id];
+    if (cachedUrl) {
+      // Edge TTS path: play from backend-cached audio
+      const audio = new Audio(cachedUrl);
+      audio.onended = () => { if (!cancelled) { clearTimeout(timeoutId); dispatch({ type: "tts_ended" }); } };
+      audio.onerror = () => { if (!cancelled) { clearTimeout(timeoutId); dispatch({ type: "tts_ended" }); } };
+      void audio.play().catch(() => { if (!cancelled) { clearTimeout(timeoutId); dispatch({ type: "tts_ended" }); } });
+      cancelPlayback = () => { audio.pause(); audio.src = ""; };
     } else {
-      const kokoroVoice = kokoroVoiceMap.get(charName) ?? KOKORO_VOICES[0];
-      const { rate, pitch } = VOICE_WEB_PARAMS[kokoroVoice];
-      const voice = pickWebSpeechVoice(kokoroVoice, allVoices)
-        ?? allVoices.find((v) => v.lang.toLowerCase().startsWith("en"))
-        ?? allVoices[0];
+      // Fallback: Web Speech API (used when Edge TTS audio isn't cached yet)
+      const voice = allVoices.find((v) => v.lang.toLowerCase().startsWith("en")) ?? allVoices[0];
       if (!voice) { clearTimeout(timeoutId); return; }
-      cancelPlayback = speakLine(line.text, voice, () => { clearTimeout(timeoutId); dispatch({ type: "tts_ended" }); }, rate, pitch);
+      cancelPlayback = speakLine(line.text, voice, () => { clearTimeout(timeoutId); dispatch({ type: "tts_ended" }); });
     }
 
     return () => { cancelled = true; clearTimeout(timeoutId); cancelPlayback(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, allVoices, kokoroVoiceMap]);
+  }, [state, allVoices, audioUrls]);
 
   // LISTENING
   useEffect(() => {
@@ -266,11 +244,25 @@ export default function RehearsalView({ script, userCharacterId, cueMode }: Prop
     <div className="flex flex-col h-full relative">
       {/* Controls */}
       <div className="flex items-center gap-3 p-4 border-b bg-white sticky top-0 z-10">
+        <button
+          onClick={() => router.back()}
+          className="text-gray-400 hover:text-gray-600 text-sm px-2 py-1 rounded-lg hover:bg-gray-100 shrink-0"
+          aria-label="Back"
+        >
+          ← Back
+        </button>
         {isIdle && currentIndex === -1 && (
-          <button onClick={() => dispatch({ type: "start" })}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
-            Start Rehearsal
-          </button>
+          ttsReady ? (
+            <button onClick={() => dispatch({ type: "start" })}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+              Start Rehearsal
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 text-sm text-blue-600">
+              <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full" />
+              Preparing voices…
+            </div>
+          )
         )}
         {(isActive || isPaused) && (
           <button onClick={() => dispatch({ type: isPaused ? "resume" : "pause" })}
@@ -306,9 +298,6 @@ export default function RehearsalView({ script, userCharacterId, cueMode }: Prop
             {state.kind === "listening" && <span className="ml-2 text-blue-600">● Listening</span>}
             {state.kind === "speaking" && <span className="ml-2 text-gray-400">Speaking…</span>}
           </span>
-          {kokoroState === "loading" && (
-            <span className="text-xs text-gray-400 animate-pulse">Loading voice model…</span>
-          )}
         </div>
       </div>
 

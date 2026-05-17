@@ -119,6 +119,28 @@ Append-only record of architectural and product choices. **When you make a non-t
 
 ---
 
+## ADR-008 — Voice tier architecture: Edge TTS (free) + Google Cloud Neural2 (premium)
+**Date:** 2026-05-16
+**Status:** Accepted
+
+**Context:** Free tier uses Web Speech API (robotic, English-only). Kokoro was planned but HuggingFace gated the model — broken. Target languages (Greek, Turkish, Dutch, Portuguese, Spanish, English) need real neural voices. Need a clear free vs premium split with multilingual support.
+
+**Decision:**
+- **Free tier:** Edge TTS (unofficial Microsoft neural, `edge-tts` Python package). Same engine as Azure Cognitive Services. All 6 target languages confirmed. $0. Server-side, audio cached in Supabase Storage.
+- **Premium tier:** Google Cloud Neural2. Official, SLA-backed, same quality tier, all 6 languages, ~$16/1M chars. Web Speech API STT kept for both tiers (upgrade only if user complaints arise).
+- Kokoro: abandoned. English-only, depends on HuggingFace hosting, not worth fixing given Edge TTS covers everything.
+- OpenAI TTS HD: rejected in favour of Google Cloud (same price, better multilingual, more voices).
+
+**Consequences:**
+- ✅ Free tier goes from robotic to neural quality — strong improvement in product experience.
+- ✅ Multilingual support on both tiers (Edge TTS covers all 6 languages).
+- ✅ Premium differentiation: reliability guarantee (official API), more voice variety, Google's voice quality.
+- ✅ Caching architecture is identical for both tiers — swap TTS provider in one function.
+- ❌ Edge TTS is unofficial — Microsoft could rate-limit or break it. Acceptable risk for free tier.
+- ❌ Google Cloud requires GCP account + credit card (won't be charged on free tier of 1M chars/month).
+
+---
+
 ## Template for new entries
 
 ```markdown

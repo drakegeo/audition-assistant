@@ -65,79 +65,92 @@ User picks their character and rehearses.
 
 ## Post-MVP (not yet scheduled — `TODO(post-mvp)`)
 
-### Voice upgrade tiers
+### Voice upgrade tiers ← ACTIVE WORK (2026-05-16)
 
-#### Free tier — Kokoro WASM (browser, open-source)
-- Model: `onnx-community/Kokoro-82M-v1.0` via `kokoro-js` npm package
-- Runs 100% in the browser via WebAssembly — no server cost
-- ~80 MB one-time download, cached by browser
-- 8 English voices (American + British, male + female)
-- No emotion control — significantly better than Web Speech API but flat delivery
-- Status: implemented in Phase 3
+**Current state:** Free tier runs Web Speech API (browser, robotic). Kokoro code exists but is broken — HuggingFace gated the model. Kokoro is English-only anyway and does not solve the multilingual requirement.
 
-#### Premium tier — OpenAI TTS HD (chosen approach)
+**Target languages:** English (US + GB), Greek, Turkish, Dutch, Spanish, Portuguese.
 
-**Why OpenAI TTS HD:**
-- $0.030 / 1k chars — affordable at scale without volume deals
-- 57 languages — genuine differentiator vs ScenePartner (English-only)
-- Good quality for rehearsal; not ElevenLabs-level but far better than Kokoro for expressiveness
-- Simple REST API, no WebSocket pipeline needed
-- Call from backend → cache result → serve from Supabase Storage
+---
 
-**Unit economics (per user per month):**
-- A 6-page audition side = ~4,500 chars of non-user lines
-- First TTS generation: ~$0.14 per scene
-- Every repeat run: $0.00 (served from cache)
-- Cap: 3 new scripts/month on premium = max ~$0.42/month cost per user
-- Charge €10–15/month → ~95% gross margin on voice costs
+#### Free tier — Edge TTS (server-side, unofficial Microsoft neural)
 
-**Caching strategy (critical):**
-- Generate TTS per line on first request → store audio file in Supabase Storage
-- Key: `tts/{script_id}/{line_id}/{voice_id}.mp3`
-- On subsequent runs, stream directly from Storage — no API call
-- Two users rehearsing the same script share the cache (first user pays, all others free)
-- Do NOT cap rehearsal session count — unlimited repetitions is the product's value prop
+**Decision (2026-05-16):** Replace broken Kokoro + Web Speech with Edge TTS as the improved free baseline.
 
-**Usage limits (premium):**
-- 3 new script uploads/month (bounds first-generation cost)
-- Unlimited rehearsal sessions on any uploaded script
-- Unlimited language selection (voice IDs vary per language, same pricing)
+**Why Edge TTS:**
+- Same neural voices as Azure Cognitive Services (literally the same engine — Microsoft Edge browser's read-aloud backend)
+- All 6 target languages confirmed working: en-US, en-GB, el-GR, tr-TR, nl-NL, es-ES, pt-PT
+- $0 forever — no API key, no signup
+- Server-side Python (`edge-tts` package installed in backend venv)
+- Audio cached in Supabase Storage → generated once per (line, voice), served forever after
 
-**Multi-language notes:**
-- TTS quality in major European languages (French, German, Spanish, Italian, Dutch) is solid on OpenAI
-- STT (Web Speech API) quality degrades for non-English theatrical speech — cue detection will be less reliable; warn users
-- Per-language voice variety is lower than English — fewer distinct character voices available
+**Risk:** Unofficial, no ToS guarantee, could be rate-limited or broken by Microsoft without notice. Acceptable for free tier — premium users get the reliable paid path.
 
-**Other options considered and why deprioritised:**
-- ElevenLabs: ~$0.18/1k chars, best quality, but unit economics only work with enterprise volume discounts ScenePartner likely has. At retail pricing, Pro-tier users would cost more than they pay.
-- Cartesia: Good quality, lower latency, but fewer languages and smaller voice library.
-- Azure / Google Neural TTS: Cheapest ($0.004–0.016/1k), 100+ languages, but "corporate" sound — not expressive enough for actors.
-- Parler TTS + LLM: Best emotional range, but requires a dedicated GPU server ($5–20/mo on Fly.io) and a real-time WebSocket pipeline. Post-MVP if the premium tier proves out.
+**Voices confirmed available (2026-05-16):**
+- en-US: AvaNeural (F), AndrewNeural (M), EmmaNeural (F), BrianNeural (M), JennyNeural (F), GuyNeural (M) + more
+- en-GB: LibbyNeural (F), SoniaNeural (F), RyanNeural (M), ThomasNeural (M)
+- el-GR: AthinaNeural (F), NestorasNeural (M)
+- tr-TR: EmelNeural (F), AhmetNeural (M)
+- nl-NL: ColetteNeural (F), FennaNeural (F), MaartenNeural (M)
+- es-ES: XimenaNeural (F), ElviraNeural (F), AlvaroNeural (M)
+- pt-PT: RaquelNeural (F), DuarteNeural (M)
 
-**Hidden costs that don't go away even with caching:**
-- **Storage:** Each cached line = ~20–50 KB Opus file. A fully cached play (4–6 characters, 1k–2k lines each) = 200–600 MB. At audition-side scale (~100 non-user lines) = ~5 MB per script. Supabase Storage: $0.021/GB stored + $0.09/GB egress. Manageable at MVP, grows linearly with library.
-- **STT: currently $0.** We use Web Speech API (free, browser-native). Only add paid STT (Deepgram/Whisper ~$0.006–0.025/min) if users report accuracy issues. Do not pay for STT until there is a proven need.
-- **Bandwidth:** Caching reduces generation cost, not delivery cost. Every audio playback egresses bytes. Heavy users replaying cached audio many times still costs egress. Minor at MVP scale.
-- **Voice picker vs cache:** Each voice selection = separate cache entry. Previewing 3 voices before picking = 3× generation cost for preview line. Small at MVP, worth knowing.
-- **Cache invalidation:** OpenAI deprecates or improves a voice → cached files become stale. Version-pin the cache key (include model version) so old files remain valid. Regenerate only when you choose to upgrade.
+**Audio samples generated:** `data/audio_samples/` — 14 MP3s (female + male per language). Listen before finalising voice selection UI.
 
-**Revised P&L at 500 paying users (with caching, Web Speech API STT):**
-- Revenue: 500 × €15 = ~$8,100/month
-- TTS (OpenAI TTS HD, 50% cache hit, 1.5 min new content/session): ~$340/month
-- STT: $0 (Web Speech API)
-- Storage + bandwidth: ~$75/month
-- Infrastructure (Render + Supabase paid): ~$100/month
-- **Total cost: ~$515/month → ~94% gross margin**
-- At 2,000 users: ~$2,100/month cost, ~$32,000 revenue → profitable side business
+**Status:** `edge-tts` installed in backend. Test samples verified. Implementation next.
 
-**Key business metric to track:** cache hit rate. Target >60%. If it drops below 40%, margins compress significantly. Measure as: (sessions with all-cached audio) / (total sessions).
+---
 
-**Usage cap decision:** Do NOT cap rehearsal sessions. Unlimited repetition is the core value prop. Cap new script uploads per month (3 on free, 10 on premium) — this bounds first-generation cost to ~$1.40/user/month worst case.
+#### Premium tier — Google Cloud Neural2
 
-**STT upgrade (if needed later):** Deepgram Nova for word-level accuracy. Free tier ~45 min/month. Add only if Web Speech API accuracy proves insufficient for users.
+**Decision (2026-05-16):** Google Cloud Neural2 for premium users. Replaces earlier OpenAI TTS HD plan.
 
-**Architecture:** Abstract behind a `TTSClient` interface (same pattern as `LLMClient`).
-Free users get Kokoro WASM; premium users get OpenAI TTS HD with Supabase Storage cache.
+**Why Google Cloud Neural2 over alternatives:**
+- Official, reliable, SLA-backed
+- Neural2 quality matches or exceeds Azure for all target languages
+- All 6 target languages supported with native neural speakers
+- Free tier: 1M WaveNet chars/month (covers ~20 active users before any cost)
+- Paid: ~$16/1M chars Neural2 — same price as Azure, far cheaper than OpenAI TTS HD ($30/1M)
+- No Azure Portal pain — GCP is significantly easier to navigate
+- ElevenLabs rejected: best English quality but weak Greek/Turkish, 11× more expensive
+
+**Unit economics (per user, 3 scripts × 20 pages, with caching):**
+- TTS one-time generation: ~48,000 chars → $0.77 (shared across all users of same script)
+- TTS every replay: $0 (Supabase cached MP3)
+- STT: Web Speech API → $0 (upgrade to paid STT only if accuracy complaints come in)
+- Storage: ~26 MB per user → fits in Supabase free tier for first ~38 users
+- **Effective cost per premium user: ~$1.50/month (STT = $0, TTS amortised to near $0 via cache)**
+- Charge €15/month → ~90% gross margin
+
+**Caching strategy (same for both tiers):**
+- Backend endpoint: `POST /tts/generate` — given `(line_id, voice_id)`
+- Check `audio_cache` table → if hit, return Supabase Storage URL immediately
+- If miss: call TTS API → store MP3 at `tts/{script_id}/{line_id}/{voice_id}.mp3` → write cache row → return URL
+- Frontend plays from URL via `<audio>` element (replaces Web Speech API for premium)
+- Cache key includes voice_id — different voice = different cache entry
+- Do NOT cap rehearsal sessions — unlimited replay is the core value prop
+
+**DB schema addition needed:**
+```sql
+create table audio_cache (
+  id uuid primary key default gen_random_uuid(),
+  line_id uuid references lines(id) on delete cascade,
+  voice_id text not null,
+  storage_path text not null,
+  created_at timestamptz default now(),
+  unique (line_id, voice_id)
+);
+```
+
+**P&L at 100 premium users:**
+- Revenue: 100 × €15 = ~$1,500/month
+- TTS (Google Neural2, high cache hit rate): ~$15/month
+- STT: $0
+- Storage + egress: $25/month (Supabase Pro)
+- Infrastructure: ~$25/month
+- **Total cost: ~$65/month → ~96% gross margin**
+
+**Status:** Not yet built. Build after free tier (Edge TTS) is live and tested in app.
 
 ### Voice upgrade — Pipecat integration (consciousness pipeline)
 

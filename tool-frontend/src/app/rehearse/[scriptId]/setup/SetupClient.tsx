@@ -2,139 +2,249 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getScript } from "@/lib/api";
-import { assignKokoroVoices, KOKORO_VOICES, VOICE_LABELS, VOICE_WEB_PARAMS, pickWebSpeechVoice, type KokoroVoice } from "@/lib/voice/kokoro";
+import { getScript, prepareTTS } from "@/lib/api";
+import {
+  getVoicesForLang,
+  getVoiceById,
+  getDefaultVoiceId,
+  assignDefaultVoiceIds,
+} from "@/lib/voice/edge-tts";
 import type { Script } from "@/types/script";
 
-function previewVoice(charName: string, voice: KokoroVoice, onEnd: () => void): () => void {
-  if (typeof window === "undefined" || !window.speechSynthesis) { onEnd(); return () => {}; }
-  window.speechSynthesis.cancel();
-  const { rate, pitch } = VOICE_WEB_PARAMS[voice];
-  const voices = window.speechSynthesis.getVoices();
-  const utter = new SpeechSynthesisUtterance(`Hi, I'm ${charName}.`);
-  const match = pickWebSpeechVoice(voice, voices);
-  if (match) utter.voice = match;
-  utter.rate = rate;
-  utter.pitch = pitch;
-  utter.onend = onEnd;
-  utter.onerror = () => onEnd();
-  window.speechSynthesis.speak(utter);
-  return () => window.speechSynthesis.cancel();
+const DEFAULT_LANG = "en-US";
+
+function playVoiceSample(voiceId: string, onEnd: () => void): () => void {
+  const audio = new Audio(`/audio_samples/${voiceId}.mp3`);
+  audio.onended = onEnd;
+  audio.onerror = onEnd;
+  void audio.play().catch(onEnd);
+  return () => { audio.pause(); audio.src = ""; };
 }
 
 export default function SetupClient({ scriptId }: { scriptId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const characterId = searchParams.get("character") ?? "";
 
   const [script, setScript] = useState<Script | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [voiceMap, setVoiceMap] = useState<Map<string, KokoroVoice>>(new Map());
+  const [lang, setLang] = useState<string>(DEFAULT_LANG);
+  const [characterId, setCharacterId] = useState<string>(searchParams.get("character") ?? "");
+  // charId → voiceId  (the new unified format replacing the old gender-only format)
+  const [voiceMap, setVoiceMap] = useState<Map<string, string>>(new Map());
   const [previewing, setPreviewing] = useState<string | null>(null);
+  const [prepared, setPrepared] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const [prepStats, setPrepStats] = useState<{ generated: number; cached: number; failed: number } | null>(null);
   const cancelRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     getScript(scriptId)
       .then((s) => {
         setScript(s);
-        const otherNames = s.characters
-          .filter((c) => c.id !== characterId)
-          .map((c) => c.name);
-        setVoiceMap(assignKokoroVoices(otherNames));
+        const scriptLang = (s as Script & { language?: string }).language ?? DEFAULT_LANG;
+        setLang(scriptLang);
+        setCharacterId((prev) => prev || s.characters[0]?.id || "");
+
+        // Try to restore saved voice prefs
+        const saved = localStorage.getItem(`voice-prefs-${scriptId}`);
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved) as Record<string, string>;
+            // Detect old format where values were "female" / "male"
+            const isOldFormat = Object.values(parsed).every(
+              (v) => v === "female" || v === "male"
+            );
+            if (!isOldFormat) {
+              // New format: values are voice IDs — use as-is
+              setVoiceMap(new Map(Object.entries(parsed)));
+              return;
+            }
+            // Old format: discard and fall through to defaults
+            localStorage.removeItem(`voice-prefs-${scriptId}`);
+          } catch { /* fall through */ }
+        }
+        // Assign defaults: cycle through all available voices so chars sound distinct
+        setVoiceMap(assignDefaultVoiceIds(s.characters, scriptLang));
       })
       .catch((e) => setError(String(e)));
-  }, [scriptId, characterId]);
+  }, [scriptId]);
 
   useEffect(() => () => { cancelRef.current?.(); }, []);
 
-  function handleVoiceChange(charName: string, voice: KokoroVoice) {
-    setVoiceMap((prev) => new Map(prev).set(charName, voice));
+  function handleVoiceSelect(charId: string, voiceId: string) {
+    setVoiceMap((prev) => new Map(prev).set(charId, voiceId));
+    setPrepared(false);
+    setPrepStats(null);
   }
 
-  function handlePreview(charName: string) {
+  function handleCharacterSelect(id: string) {
+    setCharacterId(id);
+    setPrepared(false);
+    setPrepStats(null);
+  }
+
+  function handlePreview(charId: string) {
     cancelRef.current?.();
-    setPreviewing(charName);
-    const voice = voiceMap.get(charName) ?? KOKORO_VOICES[0];
-    cancelRef.current = previewVoice(charName, voice, () => {
+    const voiceId = voiceMap.get(charId);
+    if (!voiceId) return;
+    setPreviewing(charId);
+    cancelRef.current = playVoiceSample(voiceId, () => {
       setPreviewing(null);
       cancelRef.current = null;
     });
   }
 
-  function handleStart() {
-    if (!script) return;
-    const prefs: Record<string, KokoroVoice> = {};
-    voiceMap.forEach((voice, name) => { prefs[name] = voice; });
+  async function handlePrepare() {
+    if (!script || !characterId) return;
+
+    const otherChars = script.characters.filter((c) => c.id !== characterId);
+    const ttsVoiceMap: Record<string, string> = {};
+    otherChars.forEach((c) => {
+      const voiceId = voiceMap.get(c.id) ?? getDefaultVoiceId(lang, "female");
+      ttsVoiceMap[c.id] = voiceId;
+    });
+
+    // Save all voice prefs (new format: charId → voiceId)
+    const prefs: Record<string, string> = {};
+    voiceMap.forEach((voiceId, charId) => { prefs[charId] = voiceId; });
     localStorage.setItem(`voice-prefs-${scriptId}`, JSON.stringify(prefs));
-    router.push(`/rehearse/${scriptId}?character=${characterId}`);
+
+    if (otherChars.length === 0) { setPrepared(true); return; }
+
+    setPreparing(true);
+    try {
+      const result = await prepareTTS(scriptId, ttsVoiceMap);
+      setPrepStats({ generated: result.generated, cached: result.cached, failed: result.failed });
+      setPrepared(true);
+    } catch (e) {
+      console.warn("TTS prepare failed", e);
+      setPrepared(true);
+    } finally {
+      setPreparing(false);
+    }
   }
 
-  if (error) {
-    return (
-      <main className="min-h-screen flex items-center justify-center p-4">
-        <p className="text-red-600 text-sm">{error}</p>
-      </main>
-    );
-  }
+  if (error) return (
+    <main className="min-h-screen flex items-center justify-center p-4">
+      <p className="text-red-600 text-sm">{error}</p>
+    </main>
+  );
 
-  if (!script) {
-    return (
-      <main className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full" />
-      </main>
-    );
-  }
+  if (!script) return (
+    <main className="min-h-screen flex items-center justify-center">
+      <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full" />
+    </main>
+  );
 
-  const userCharName = script.characters.find((c) => c.id === characterId)?.name ?? "";
   const otherChars = script.characters.filter((c) => c.id !== characterId);
+  const { females, males } = getVoicesForLang(lang);
 
   return (
     <main className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-4">
-      <div className="w-full max-w-md space-y-6">
+      <div className="w-full max-w-lg space-y-6">
         <div>
           <p className="text-xs text-gray-400 font-medium truncate mb-1">{script.title}</p>
-          <h1 className="text-2xl font-bold text-gray-900">Choose voices</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Set up rehearsal</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Hear how each character will sound before you start.
+            Pick a voice for each character, then choose who you&apos;re playing.
           </p>
         </div>
 
-        <div className="bg-white border rounded-xl p-4">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">You</p>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-blue-600">{userCharName}</span>
-            <span className="text-xs text-gray-400 ml-auto">your voice</span>
-          </div>
-        </div>
-
+        {/* Step 1: Assign voices */}
         <div className="bg-white border rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b bg-gray-50">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Other characters</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Voices</p>
+            <p className="text-xs text-gray-400 mt-0.5">Select a voice per character · ▶ to preview</p>
           </div>
           <ul className="divide-y">
-            {otherChars.map((char) => {
-              const current = voiceMap.get(char.name) ?? KOKORO_VOICES[0];
+            {script.characters.map((char) => {
+              const selectedId = voiceMap.get(char.id);
+              const selectedVoice = selectedId ? getVoiceById(selectedId) : undefined;
               return (
-                <li key={char.id} className="px-4 py-3 flex items-center gap-3">
-                  <span className="text-sm font-medium text-gray-800 w-24 shrink-0 truncate">
-                    {char.name}
-                  </span>
-                  <select
-                    value={current}
-                    onChange={(e) => handleVoiceChange(char.name, e.target.value as KokoroVoice)}
-                    className="flex-1 text-xs border rounded-lg px-2 py-1.5 bg-white text-gray-700"
-                  >
-                    {KOKORO_VOICES.map((v) => (
-                      <option key={v} value={v}>{VOICE_LABELS[v]}</option>
+                <li key={char.id} className="px-4 py-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-800">{char.name}</span>
+                    <div className="flex items-center gap-2">
+                      {selectedVoice && (
+                        <span className="text-xs text-gray-400">
+                          {selectedVoice.gender === "female" ? "♀" : "♂"} {selectedVoice.name}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => handlePreview(char.id)}
+                        disabled={previewing !== null || !selectedId}
+                        className="text-blue-500 hover:text-blue-700 disabled:text-gray-300 text-sm w-6 text-center"
+                        aria-label={`Preview ${char.name}`}
+                      >
+                        {previewing === char.id ? "…" : "▶"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Voice chips */}
+                  <div className="flex flex-wrap gap-1">
+                    {females.map((v) => (
+                      <button
+                        key={v.id}
+                        onClick={() => handleVoiceSelect(char.id, v.id)}
+                        className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
+                          selectedId === v.id
+                            ? "bg-pink-500 border-pink-500 text-white"
+                            : "border-gray-200 text-gray-500 hover:border-pink-300 hover:text-pink-600"
+                        }`}
+                      >
+                        {v.name}
+                      </button>
                     ))}
-                  </select>
+                    {females.length > 0 && males.length > 0 && (
+                      <span className="text-gray-200 self-center text-xs px-0.5">|</span>
+                    )}
+                    {males.map((v) => (
+                      <button
+                        key={v.id}
+                        onClick={() => handleVoiceSelect(char.id, v.id)}
+                        className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
+                          selectedId === v.id
+                            ? "bg-blue-500 border-blue-500 text-white"
+                            : "border-gray-200 text-gray-500 hover:border-blue-300 hover:text-blue-600"
+                        }`}
+                      >
+                        {v.name}
+                      </button>
+                    ))}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
+        {/* Step 2: Choose your character */}
+        <div className="bg-white border rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b bg-gray-50">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">I&apos;m playing</p>
+            <p className="text-xs text-gray-400 mt-0.5">Select the character you will speak aloud.</p>
+          </div>
+          <ul className="divide-y">
+            {script.characters.map((char) => {
+              const isMe = char.id === characterId;
+              return (
+                <li key={char.id}>
                   <button
-                    onClick={() => handlePreview(char.name)}
-                    disabled={previewing !== null}
-                    className="text-blue-500 hover:text-blue-700 disabled:text-gray-300 text-sm px-1 w-6 text-center"
-                    aria-label={`Preview ${char.name}`}
+                    onClick={() => handleCharacterSelect(char.id)}
+                    className={`w-full text-left px-4 py-3 flex items-center gap-3 transition-colors ${
+                      isMe ? "bg-blue-50" : "hover:bg-gray-50"
+                    }`}
                   >
-                    {previewing === char.name ? "…" : "▶"}
+                    <span className={`shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                      isMe ? "border-blue-600 bg-blue-600" : "border-gray-300"
+                    }`}>
+                      {isMe && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    </span>
+                    <span className={`text-sm font-medium ${isMe ? "text-blue-700" : "text-gray-800"}`}>
+                      {char.name}
+                    </span>
+                    <span className="ml-auto text-xs text-gray-400">{char.line_count} lines</span>
                   </button>
                 </li>
               );
@@ -142,17 +252,44 @@ export default function SetupClient({ scriptId }: { scriptId: string }) {
           </ul>
         </div>
 
-        <button
-          onClick={handleStart}
-          className="w-full bg-blue-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-blue-700 transition"
-        >
-          Start Rehearsal
-        </button>
+        {/* Prepare / Start */}
+        {!prepared ? (
+          <button
+            onClick={() => void handlePrepare()}
+            disabled={preparing || !characterId}
+            className="w-full bg-blue-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-blue-700 transition disabled:opacity-60 flex items-center justify-center gap-2"
+          >
+            {preparing ? (
+              <>
+                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                Preparing voices…
+              </>
+            ) : "Prepare Voices"}
+          </button>
+        ) : (
+          <div className="space-y-3">
+            {prepStats && (
+              <p className="text-center text-xs text-green-600 font-medium">
+                ✓ {prepStats.generated + prepStats.cached} line{prepStats.generated + prepStats.cached !== 1 ? "s" : ""} ready
+                {prepStats.failed > 0 && ` · ${prepStats.failed} failed (browser fallback)`}
+              </p>
+            )}
+            <button
+              onClick={() => router.push(`/rehearse/${scriptId}?character=${characterId}`)}
+              className="w-full bg-green-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-green-700 transition"
+            >
+              Start Rehearsal
+            </button>
+            <button
+              onClick={() => { setPrepared(false); setPrepStats(null); }}
+              className="w-full text-sm text-gray-400 hover:text-gray-600 text-center"
+            >
+              Change voices or character
+            </button>
+          </div>
+        )}
 
-        <button
-          onClick={() => router.back()}
-          className="w-full text-sm text-gray-400 hover:text-gray-600 text-center"
-        >
+        <button onClick={() => router.back()} className="w-full text-sm text-gray-400 hover:text-gray-600 text-center">
           Back
         </button>
       </div>

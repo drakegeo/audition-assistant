@@ -2,9 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { deleteScript, getScript, getScriptStatus, renameScript } from "@/lib/api";
-import { loadKokoro } from "@/lib/voice/kokoro";
-import type { Character, ScriptListItem } from "@/types/script";
+import { deleteScript, getScriptStatus, renameScript } from "@/lib/api";
+import type { ScriptListItem } from "@/types/script";
 
 const POLL_MS = 2000;
 
@@ -18,15 +17,12 @@ export default function ScriptCard({ script, onDeleted, onStatusChange }: Props)
   const router = useRouter();
   const [title, setTitle] = useState(script.title);
   const [isRenaming, setIsRenaming] = useState(false);
-  const [characters, setCharacters] = useState<Character[] | null>(null);
-  const [showPicker, setShowPicker] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [status, setStatus] = useState(script.status);
   const [parseError, setParseError] = useState(script.parse_error);
   const inputRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Poll while parsing
   useEffect(() => {
     if (status !== "queued" && status !== "parsing") return;
     pollRef.current = setInterval(async () => {
@@ -53,14 +49,6 @@ export default function ScriptCard({ script, onDeleted, onStatusChange }: Props)
     if (!trimmed || trimmed === script.title) { setIsRenaming(false); return; }
     await renameScript(script.id, trimmed).catch(() => setTitle(script.title));
     setIsRenaming(false);
-  }
-
-  async function handleRehearse() {
-    if (showPicker) { setShowPicker(false); return; }
-    void loadKokoro();
-    const full = await getScript(script.id);
-    setCharacters(full.characters);
-    setShowPicker(true);
   }
 
   async function handleDelete() {
@@ -124,34 +112,14 @@ export default function ScriptCard({ script, onDeleted, onStatusChange }: Props)
         <p className="text-sm text-red-600">{parseError ?? "Parsing failed."}</p>
       )}
 
-      {/* Character picker */}
-      {showPicker && characters && (
-        <div className="space-y-2">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Who are you playing?</p>
-          <ul className="space-y-1">
-            {characters.map((c) => (
-              <li key={c.id}>
-                <button
-                  onClick={() => router.push(`/rehearse/${script.id}/setup?character=${c.id}`)}
-                  className="w-full text-left px-3 py-2 rounded-lg border text-sm hover:bg-blue-50 hover:border-blue-400 transition"
-                >
-                  <span className="font-medium">{c.name}</span>
-                  <span className="ml-2 text-gray-400">{c.line_count} lines</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       {/* Actions */}
       <div className="flex gap-2 pt-1">
         {status === "ready" && (
           <button
-            onClick={handleRehearse}
+            onClick={() => router.push(`/rehearse/${script.id}/setup`)}
             className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700"
           >
-            {showPicker ? "Cancel" : "Rehearse"}
+            Rehearse
           </button>
         )}
         <button

@@ -96,3 +96,22 @@ export async function deleteScript(scriptId: string): Promise<void> {
   if (res.status === 204) return;
   return handleResponse<void>(res);
 }
+
+export interface PrepareTTSResponse {
+  urls: Record<string, string>;  // line_id -> signed URL
+  generated: number;
+  cached: number;
+  failed: number;
+}
+
+export async function prepareTTS(
+  scriptId: string,
+  voiceMap: Record<string, string>,  // character_id -> voice_id
+): Promise<PrepareTTSResponse> {
+  const res = await fetch(`${BASE}/tts/prepare`, {
+    method: "POST",
+    headers: { ...(await authHeaders()), "Content-Type": "application/json" },
+    body: JSON.stringify({ script_id: scriptId, voice_map: voiceMap }),
+  });
+  return handleResponse<PrepareTTSResponse>(res);
+}
