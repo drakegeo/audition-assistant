@@ -65,9 +65,9 @@ User picks their character and rehearses.
 
 ## Post-MVP (not yet scheduled — `TODO(post-mvp)`)
 
-### Voice upgrade tiers ← ACTIVE WORK (2026-05-16)
+### Voice upgrade tiers
 
-**Current state:** Free tier runs Web Speech API (browser, robotic). Kokoro code exists but is broken — HuggingFace gated the model. Kokoro is English-only anyway and does not solve the multilingual requirement.
+**Current state (2026-05-17):** Free tier runs Edge TTS — deployed to Render + Vercel. 29 neural voices across 7 languages, cached in Supabase Storage. Web Speech API is fallback only. Kokoro removed.
 
 **Target languages:** English (US + GB), Greek, Turkish, Dutch, Spanish, Portuguese.
 
@@ -95,9 +95,9 @@ User picks their character and rehearses.
 - es-ES: XimenaNeural (F), ElviraNeural (F), AlvaroNeural (M)
 - pt-PT: RaquelNeural (F), DuarteNeural (M)
 
-**Audio samples generated:** `data/audio_samples/` — 14 MP3s (female + male per language). Listen before finalising voice selection UI.
+**Audio samples:** 29 MP3s in `tool-frontend/public/audio_samples/` — served as static assets for voice preview in setup screen.
 
-**Status:** `edge-tts` installed in backend. Test samples verified. Implementation next.
+**Status:** ✅ COMPLETE — deployed 2026-05-17. Pending: verify end-to-end on production.
 
 ---
 
